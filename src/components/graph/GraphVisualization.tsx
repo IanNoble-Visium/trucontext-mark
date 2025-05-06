@@ -84,8 +84,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
   // Fetch data when time range props change
   useEffect(() => {
+    // Only fetch data if we have valid time range values
     if (startTime > 0 && endTime > 0 && startTime < endTime) {
-        fetchData(startTime, endTime);
+      console.log(`Fetching data for time range: ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`);
+      fetchData(startTime, endTime);
+    } else {
+      console.log('Invalid time range, not fetching data');
     }
   }, [startTime, endTime, fetchData]);
 

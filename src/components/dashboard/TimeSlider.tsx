@@ -22,9 +22,13 @@ interface TimeSliderProps {
 }
 
 const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
-  const [minTimestamp, setMinTimestamp] = useState<number>(0);
-  const [maxTimestamp, setMaxTimestamp] = useState<number>(0);
-  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([0, 0]);
+  // Initialize with default values that won't trigger immediate API calls
+  const now = Date.now();
+  const fortyEightHoursAgo = now - 48 * 60 * 60 * 1000;
+
+  const [minTimestamp, setMinTimestamp] = useState<number>(fortyEightHoursAgo);
+  const [maxTimestamp, setMaxTimestamp] = useState<number>(now);
+  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([fortyEightHoursAgo, now]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [animationInterval, setAnimationInterval] = useState<NodeJS.Timeout | null>(null);
@@ -41,7 +45,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
         throw new Error('Failed to fetch time range');
       }
       const data = await response.json();
-      
+
       // Assuming API returns { minTimestamp: number, maxTimestamp: number } in milliseconds
       const minTs = data.minTimestamp || Date.now() - 48 * 60 * 60 * 1000; // Default to 48 hours ago
       const maxTs = data.maxTimestamp || Date.now(); // Default to now
@@ -86,11 +90,30 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     // This might involve a global state or context, or a prop passed down.
   }, [fetchTimeRange]);
 
+  // Debounce function to limit API calls
+  const debounce = (func: Function, delay: number) => {
+    let timeoutId: NodeJS.Timeout;
+    return (...args: any[]) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        func(...args);
+      }, delay);
+    };
+  };
+
+  // Debounced version of onTimeRangeChange
+  const debouncedTimeRangeChange = useCallback(
+    debounce((start: number, end: number) => {
+      onTimeRangeChange(start, end);
+    }, 300), // 300ms delay
+    [onTimeRangeChange]
+  );
+
   // Handle slider changes
   const handleSliderChange = (val: [number, number]) => {
     setCurrentTimeRange(val);
-    // Debounce or throttle this if performance is an issue
-    onTimeRangeChange(val[0], val[1]);
+    // Use debounced function to prevent too many API calls
+    debouncedTimeRangeChange(val[0], val[1]);
   };
 
   // Format timestamp for display
@@ -113,8 +136,9 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
         stopAnimation(); // Stop when reaching the end
       }
       // Update slider to show progress up to currentEndTime
-      setCurrentTimeRange([minTimestamp, currentEndTime]); 
-      onTimeRangeChange(minTimestamp, currentEndTime);
+      setCurrentTimeRange([minTimestamp, currentEndTime]);
+      // Use debounced function to prevent too many API calls during animation
+      debouncedTimeRangeChange(minTimestamp, currentEndTime);
     }, 200); // Adjust speed as needed
 
     setAnimationInterval(interval);

@@ -10,9 +10,13 @@ import DatasetUploader from "@/components/dashboard/DatasetUploader"; // Dataset
 import TimeSlider from "@/components/dashboard/TimeSlider"; // Import the TimeSlider component
 
 export default function Home() {
+  // Initialize with default time range values
+  const now = Date.now();
+  const fortyEightHoursAgo = now - 48 * 60 * 60 * 1000;
+
   // State to hold the time range from the slider
-  const [startTime, setStartTime] = useState<number>(0);
-  const [endTime, setEndTime] = useState<number>(0);
+  const [startTime, setStartTime] = useState<number>(fortyEightHoursAgo);
+  const [endTime, setEndTime] = useState<number>(now);
 
   // Callback function for the TimeSlider to update the time range
   const handleTimeRangeChange = (start: number, end: number) => {

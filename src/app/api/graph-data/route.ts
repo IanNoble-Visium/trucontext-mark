@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     session = await getSession();
     console.log('Neo4j session obtained for GET /api/graph-data');
 
-    // --- Handle request for min/max time range --- 
+    // --- Handle request for min/max time range ---
     if (getRange) {
       console.log('Fetching min/max timestamp range');
       const rangeResult = await session.run(
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
          MATCH ()-[r]-()
          WHERE r.timestamp IS NOT NULL
          WITH minNodeTs, maxNodeTs, min(r.timestamp) as minEdgeTs, max(r.timestamp) as maxEdgeTs
-         RETURN 
+         RETURN
            min([minNodeTs, minEdgeTs]) as minTimestamp,
            max([maxNodeTs, maxEdgeTs]) as maxTimestamp`
       );
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         minTimestamp = typeof rawMin === 'string' ? new Date(rawMin).getTime() : toNumber(rawMin);
         maxTimestamp = typeof rawMax === 'string' ? new Date(rawMax).getTime() : toNumber(rawMax);
       }
-      
+
       // Handle cases where timestamps might be null (e.g., empty DB)
       if (minTimestamp === null || maxTimestamp === null || isNaN(minTimestamp) || isNaN(maxTimestamp)) {
           console.log('No valid timestamps found, returning default range.');
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     if ((startTime !== null && isNaN(startTime)) || (endTime !== null && isNaN(endTime)) || (startTime !== null && endTime !== null && startTime >= endTime)) {
         return NextResponse.json({ error: 'Invalid time range parameters' }, { status: 400 });
     }
-    
+
     // Convert JS milliseconds timestamps to ISO strings for Cypher comparison if timestamps are stored as strings
     // Or use numerical comparison if timestamps are stored as numbers (e.g., epoch milliseconds)
     // Assuming timestamps are stored as ISO strings based on the upload logic
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
     // This query fetches nodes and relationships created *within* the time range.
     // Adjust logic if you need elements existing *before* startTime but connected within the range.
     let query = '';
-    const params: Record<string, any> = { limit: 100 }; // Add limit
+    const params: Record<string, any> = { limit: neo4j.int(100) }; // Ensure limit is passed as an integer
 
     if (startTimeISO && endTimeISO) {
       query = `
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
         WITH collect(n) as nodesInTime
         UNWIND nodesInTime as n
         OPTIONAL MATCH (n)-[r]-(m)
-        WHERE r.timestamp >= $startTime AND r.timestamp <= $endTime 
+        WHERE r.timestamp >= $startTime AND r.timestamp <= $endTime
           AND m in nodesInTime // Ensure connected node is also within time range
         RETURN n, r, m
         LIMIT $limit
