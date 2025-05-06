@@ -109,28 +109,28 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       }
     },
     {
-      selector: 'node[type="Server"]
+      selector: 'node[type="Server"]',
       style: {
         'background-color': '#3498db',
         'shape': 'rectangle'
       }
     },
     {
-      selector: 'node[type="Workstation"]
+      selector: 'node[type="Workstation"]',
       style: {
         'background-color': '#2ecc71',
         'shape': 'ellipse'
       }
     },
     {
-      selector: 'node[type="User"]
+      selector: 'node[type="User"]',
       style: {
         'background-color': '#f1c40f',
         'shape': 'round-diamond'
       }
     },
     {
-      selector: 'node[type="ThreatActor"]
+      selector: 'node[type="ThreatActor"]',
       style: {
         'background-color': '#e74c3c',
         'shape': 'triangle',
@@ -139,21 +139,21 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       }
     },
     {
-      selector: 'node[riskLevel="High"]
+      selector: 'node[riskLevel="High"]',
       style: {
         'border-color': '#e74c3c',
         'border-width': '3px'
       }
     },
     {
-      selector: 'node[riskLevel="Medium"]
+      selector: 'node[riskLevel="Medium"]',
       style: {
         'border-color': '#f39c12',
         'border-width': '3px'
       }
     },
     {
-      selector: 'node[riskLevel="Low"]
+      selector: 'node[riskLevel="Low"]',
       style: {
         'border-color': '#2ecc71',
         'border-width': '2px'
@@ -174,7 +174,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       }
     },
     {
-        selector: 'edge[label="ATTACK"]
+        selector: 'edge[label="ATTACK"]',
         style: {
             'line-color': '#e74c3c',
             'target-arrow-color': '#e74c3c',
@@ -182,7 +182,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         }
     },
     {
-        selector: 'edge[label="DATA_TRANSFER"]
+        selector: 'edge[label="DATA_TRANSFER"]',
         style: {
             'line-color': '#3498db',
             'target-arrow-color': '#3498db',
@@ -249,7 +249,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         console.log('Node clicked:', nodeData);
         toast({
           title: `Node Clicked: ${nodeData.label || nodeData.id}`,
-          description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`, 
+          description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`,
           status: 'info',
           duration: 3000,
           isClosable: true,
@@ -261,13 +261,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         console.log('Edge clicked:', edgeData);
         toast({
           title: `Edge Clicked: ${edgeData.label || edgeData.id}`,
-          description: `Source: ${edgeData.source}, Target: ${edgeData.target}`, 
+          description: `Source: ${edgeData.source}, Target: ${edgeData.target}`,
           status: 'info',
           duration: 3000,
           isClosable: true,
         });
       });
-      
+
       // Re-run layout after elements are updated
       const currentLayout = cy.layout(layout);
       currentLayout.run();
@@ -316,7 +316,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
         layout={layout} // Layout is applied via useEffect now
-        cy={(cy) => { cyRef.current = cy; }} 
+        cy={(cy) => { cyRef.current = cy; }}
         minZoom={0.2}
         maxZoom={2.5}
       />
