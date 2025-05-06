@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Box, Heading, Text, VStack, Divider } from "@chakra-ui/react";
 import GraphVisualization from "@/components/graph/GraphVisualization"; // Adjust path if needed
 import KpiSummary from "@/components/dashboard/KpiSummary"; // Adjust path if needed
@@ -15,10 +15,12 @@ export default function Home() {
   const [endTime, setEndTime] = useState<number>(0);
 
   // Callback function for the TimeSlider to update the time range
-  const handleTimeRangeChange = (start: number, end: number) => {
+  // Using useCallback to ensure the function reference remains stable
+  const handleTimeRangeChange = useCallback((start: number, end: number) => {
+    console.log(`Home: Time range changed to ${new Date(start).toISOString()} - ${new Date(end).toISOString()}`);
     setStartTime(start);
     setEndTime(end);
-  };
+  }, []);
 
   return (
     <Box p={5}>
