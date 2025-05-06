@@ -12,9 +12,29 @@ import {
   IconButton,
   useToast,
   Spinner,
-  VStack
+  VStack,
+  Select,
+  Tooltip,
+  Flex,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverHeader,
+  PopoverBody,
+  PopoverArrow,
+  PopoverCloseButton,
+  Button
 } from '@chakra-ui/react';
-import { FaPlay, FaPause } from 'react-icons/fa'; // Assuming react-icons is installed
+import {
+  FaPlay,
+  FaPause,
+  FaFastForward,
+  FaFastBackward,
+  FaStepForward,
+  FaStepBackward,
+  FaCog,
+  FaCalendarAlt
+} from 'react-icons/fa'; // Assuming react-icons is installed
 
 interface TimeSliderProps {
   onTimeRangeChange: (startTime: number, endTime: number) => void;
@@ -151,7 +171,10 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     }
   }, [debouncedUpdateTimeRange]);
 
-  // Animation logic
+  // Add state for playback speed
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+
+  // Animation logic with speed control
   const startAnimation = useCallback(() => {
     if (isLoading || minTimestamp === maxTimestamp) return;
     setIsPlaying(true);
@@ -161,18 +184,34 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     const safeMaxTimestamp = Math.min(maxTimestamp, currentTime);
 
     let currentEndTime = safeMinTimestamp;
-    const step = (safeMaxTimestamp - safeMinTimestamp) / 20;
+
+    // Adjust number of steps based on playback speed
+    // More steps = smoother animation but slower progress
+    const numSteps = playbackSpeed < 1 ? 40 : 20;
+    const step = (safeMaxTimestamp - safeMinTimestamp) / numSteps;
+
     let lastUpdateTime = 0;
+
+    // Calculate interval based on playback speed
+    // Faster speed = shorter interval
+    const intervalTime = Math.max(100, Math.floor(1000 / playbackSpeed));
+
+    console.log(`TimeSlider: Animation starting with speed ${playbackSpeed}x (interval: ${intervalTime}ms)`);
 
     const interval = setInterval(() => {
       const now = Date.now();
 
-      if (now - lastUpdateTime < 1000 && lastUpdateTime > 0) {
+      // Throttle updates based on playback speed
+      const minUpdateInterval = Math.max(100, Math.floor(1000 / playbackSpeed));
+      if (now - lastUpdateTime < minUpdateInterval && lastUpdateTime > 0) {
         return;
       }
 
       lastUpdateTime = now;
-      currentEndTime += step;
+
+      // Adjust step size based on playback speed
+      const adjustedStep = step * playbackSpeed;
+      currentEndTime += adjustedStep;
 
       if (currentEndTime >= safeMaxTimestamp) {
         currentEndTime = safeMaxTimestamp;
@@ -182,10 +221,10 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
 
       setCurrentTimeRange([safeMinTimestamp, currentEndTime]);
       debouncedUpdateTimeRange(safeMinTimestamp, currentEndTime);
-    }, 1000);
+    }, intervalTime);
 
     setAnimationInterval(interval);
-  }, [isLoading, minTimestamp, maxTimestamp, debouncedUpdateTimeRange]);
+  }, [isLoading, minTimestamp, maxTimestamp, debouncedUpdateTimeRange, playbackSpeed]);
 
   const stopAnimation = useCallback(() => {
     setIsPlaying(false);
@@ -224,18 +263,189 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     return <Box p={4} borderWidth="1px" borderRadius="lg"><Spinner size="md" /></Box>;
   }
 
+  // Add state for custom date selection
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState<boolean>(false);
+
+  // Function to handle custom date selection
+  const handleCustomDateApply = useCallback(() => {
+    try {
+      const startDate = new Date(customStartDate).getTime();
+      const endDate = new Date(customEndDate).getTime();
+
+      if (isNaN(startDate) || isNaN(endDate)) {
+        toast({
+          title: "Invalid date format",
+          description: "Please enter valid dates",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      if (startDate >= endDate) {
+        toast({
+          title: "Invalid date range",
+          description: "Start date must be before end date",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      // Update the time range
+      setCurrentTimeRange([startDate, endDate]);
+      debouncedUpdateTimeRange(startDate, endDate);
+      setShowCustomDatePicker(false);
+    } catch (error) {
+      toast({
+        title: "Error setting custom date",
+        description: "Please check the date format",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [customStartDate, customEndDate, debouncedUpdateTimeRange, toast]);
+
+  // Function to step forward/backward in time
+  const stepTimeRange = useCallback((direction: 'forward' | 'backward') => {
+    const [start, end] = currentTimeRange;
+    const rangeDuration = end - start;
+
+    // Step by 50% of the current range
+    const stepSize = rangeDuration * 0.5;
+
+    if (direction === 'forward') {
+      const newStart = start + stepSize;
+      const newEnd = end + stepSize;
+
+      // Don't go beyond the max timestamp
+      if (newEnd <= maxTimestamp) {
+        setCurrentTimeRange([newStart, newEnd]);
+        debouncedUpdateTimeRange(newStart, newEnd);
+      }
+    } else {
+      const newStart = start - stepSize;
+      const newEnd = end - stepSize;
+
+      // Don't go before the min timestamp
+      if (newStart >= minTimestamp) {
+        setCurrentTimeRange([newStart, newEnd]);
+        debouncedUpdateTimeRange(newStart, newEnd);
+      }
+    }
+  }, [currentTimeRange, minTimestamp, maxTimestamp, debouncedUpdateTimeRange]);
+
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg">
       <VStack spacing={3} align="stretch">
-        <Text fontWeight="medium">Time Range Filter</Text>
+        <Flex justifyContent="space-between" alignItems="center">
+          <Text fontWeight="medium">Time Range Filter</Text>
+
+          {/* Playback controls */}
+          <HStack spacing={2}>
+            <Tooltip label="Step backward">
+              <IconButton
+                aria-label="Step backward"
+                icon={<FaStepBackward />}
+                onClick={() => stepTimeRange('backward')}
+                size="xs"
+                isDisabled={isLoading || isPlaying}
+              />
+            </Tooltip>
+
+            <Tooltip label={isPlaying ? "Pause" : "Play"}>
+              <IconButton
+                aria-label={isPlaying ? "Pause" : "Play"}
+                icon={isPlaying ? <FaPause /> : <FaPlay />}
+                onClick={togglePlayPause}
+                size="xs"
+                isDisabled={isLoading || minTimestamp === maxTimestamp}
+              />
+            </Tooltip>
+
+            <Tooltip label="Step forward">
+              <IconButton
+                aria-label="Step forward"
+                icon={<FaStepForward />}
+                onClick={() => stepTimeRange('forward')}
+                size="xs"
+                isDisabled={isLoading || isPlaying}
+              />
+            </Tooltip>
+
+            {/* Playback speed selector */}
+            <Select
+              size="xs"
+              width="100px"
+              value={playbackSpeed}
+              onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+              isDisabled={isLoading || isPlaying}
+            >
+              <option value={0.25}>0.25x</option>
+              <option value={0.5}>0.5x</option>
+              <option value={1}>1x</option>
+              <option value={2}>2x</option>
+              <option value={4}>4x</option>
+            </Select>
+
+            {/* Custom date picker */}
+            <Popover
+              isOpen={showCustomDatePicker}
+              onClose={() => setShowCustomDatePicker(false)}
+            >
+              <PopoverTrigger>
+                <IconButton
+                  aria-label="Custom date range"
+                  icon={<FaCalendarAlt />}
+                  size="xs"
+                  onClick={() => {
+                    // Initialize with current range
+                    setCustomStartDate(new Date(currentTimeRange[0]).toISOString().split('T')[0]);
+                    setCustomEndDate(new Date(currentTimeRange[1]).toISOString().split('T')[0]);
+                    setShowCustomDatePicker(true);
+                  }}
+                />
+              </PopoverTrigger>
+              <PopoverContent>
+                <PopoverArrow />
+                <PopoverCloseButton />
+                <PopoverHeader>Custom Time Range</PopoverHeader>
+                <PopoverBody>
+                  <VStack spacing={3}>
+                    <Flex direction="column" width="100%">
+                      <Text fontSize="xs">Start Date:</Text>
+                      <input
+                        type="datetime-local"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        style={{ width: '100%', padding: '4px', fontSize: '14px' }}
+                      />
+                    </Flex>
+                    <Flex direction="column" width="100%">
+                      <Text fontSize="xs">End Date:</Text>
+                      <input
+                        type="datetime-local"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        style={{ width: '100%', padding: '4px', fontSize: '14px' }}
+                      />
+                    </Flex>
+                    <Button size="sm" colorScheme="blue" onClick={handleCustomDateApply}>
+                      Apply
+                    </Button>
+                  </VStack>
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+          </HStack>
+        </Flex>
+
         <HStack spacing={4}>
-           <IconButton
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-            icon={isPlaying ? <FaPause /> : <FaPlay />}
-            onClick={togglePlayPause}
-            size="sm"
-            isDisabled={isLoading || minTimestamp === maxTimestamp}
-          />
           <Text fontSize="xs" minW="140px" textAlign="center">{formatTimestamp(currentTimeRange[0])}</Text>
           <RangeSlider
             aria-label={['min', 'max']}

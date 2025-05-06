@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
-import { Box, Spinner, Text, useToast } from '@chakra-ui/react';
+import { Box, Spinner, Text, useToast, IconButton, Tooltip } from '@chakra-ui/react';
+import { FaCog } from 'react-icons/fa';
 import cytoscape from 'cytoscape'; // Import core cytoscape
 
 // Define the structure of the elements expected by Cytoscape
@@ -234,12 +235,16 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     animationDuration: 500
   };
 
-  // Setup event listeners (keep as is, but re-run if elements change)
+  // Store previous node positions
+  const nodePositionsRef = useRef<Record<string, { x: number, y: number }>>({});
+
+  // Setup event listeners and handle smooth transitions
   useEffect(() => {
     const cy = cyRef.current;
     if (cy) {
       cy.removeAllListeners(); // Clear previous listeners
 
+      // Event listeners for hover effects
       cy.on('mouseover', 'node', (event) => {
         event.target.addClass('hovered');
       });
@@ -247,6 +252,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         event.target.removeClass('hovered');
       });
 
+      // Event listener for node clicks
       cy.on('tap', 'node', (event) => {
         const nodeData = event.target.data();
         console.log('Node clicked:', nodeData);
@@ -259,6 +265,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         });
       });
 
+      // Event listener for edge clicks
       cy.on('tap', 'edge', (event) => {
         const edgeData = event.target.data();
         console.log('Edge clicked:', edgeData);
@@ -271,12 +278,57 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         });
       });
 
-      // Re-run layout after elements are updated
-      const currentLayout = cy.layout(layout);
-      currentLayout.run();
+      // Store current node positions before layout
+      const storeNodePositions = () => {
+        const positions: Record<string, { x: number, y: number }> = {};
+        cy.nodes().forEach((node) => {
+          const position = node.position();
+          positions[node.id()] = { x: position.x, y: position.y };
+        });
+        nodePositionsRef.current = positions;
+      };
 
+      // Apply stored positions to existing nodes
+      const applyStoredPositions = () => {
+        const positions = nodePositionsRef.current;
+        cy.nodes().forEach((node) => {
+          if (positions[node.id()]) {
+            node.position(positions[node.id()]);
+          }
+        });
+      };
+
+      // Apply stored positions to existing nodes before running layout
+      applyStoredPositions();
+
+      // Run layout with animation
+      const layoutOptions = {
+        ...layout,
+        animate: animationEnabled,
+        animationDuration: animationEnabled ? 800 : 0,
+        randomize: false, // Don't randomize positions for smoother transitions
+        fit: false // Don't fit to viewport to maintain user's view
+      };
+
+      // Only run layout if there are new nodes
+      const hasNewNodes = cy.nodes().some(node => !nodePositionsRef.current[node.id()]);
+
+      if (hasNewNodes || cy.nodes().length === 0) {
+        // Run layout for new nodes
+        const currentLayout = cy.layout(layoutOptions);
+        currentLayout.run();
+      }
+
+      // Store positions after layout completes
+      cy.on('layoutstop', storeNodePositions);
+
+      return () => {
+        // Store positions before unmounting
+        storeNodePositions();
+        cy.off('layoutstop', storeNodePositions);
+      };
     }
-  }, [elements, toast, layout]); // Add layout to dependencies
+  }, [elements, toast, layout, animationEnabled]); // Add animationEnabled to dependencies
 
   if (loading) {
     return (
@@ -331,14 +383,53 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     );
   }
 
+  // Add state for animation settings
+  const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
+
+  // Toggle animation setting
+  const toggleAnimation = () => {
+    setAnimationEnabled(!animationEnabled);
+    toast({
+      title: animationEnabled ? "Animations disabled" : "Animations enabled",
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+  };
+
   return (
     <Box border="1px solid #eee" borderRadius="md" overflow="hidden" height="600px" width="100%" position="relative">
+      {/* Animation toggle button */}
+      <Box position="absolute" top="10px" right="10px" zIndex="1">
+        <Tooltip label={animationEnabled ? "Disable animations" : "Enable animations"}>
+          <IconButton
+            aria-label="Toggle animations"
+            icon={<FaCog />}
+            size="sm"
+            onClick={toggleAnimation}
+            colorScheme={animationEnabled ? "blue" : "gray"}
+            opacity="0.7"
+            _hover={{ opacity: 1 }}
+          />
+        </Tooltip>
+      </Box>
+
       <CytoscapeComponent
-        key={`${startTime}-${endTime}`} // Force re-render when time range changes significantly if needed
+        // Remove the key prop to prevent full re-renders
         elements={CytoscapeComponent.normalizeElements(elements)}
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
-        layout={layout} // Layout is applied via useEffect now
+        layout={{
+          ...layout,
+          // Enable or disable animations based on user preference
+          animate: animationEnabled,
+          // Increase animation duration for smoother transitions
+          animationDuration: animationEnabled ? 800 : 0,
+          // Use a more stable layout for smoother transitions
+          randomize: false,
+          // Preserve node positions between updates
+          fit: false
+        }}
         cy={(cy) => { cyRef.current = cy; }}
         minZoom={0.2}
         maxZoom={2.5}
