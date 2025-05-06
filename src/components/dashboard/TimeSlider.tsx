@@ -65,14 +65,14 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initialRenderRef = useRef<boolean>(true);
 
-  // Format timestamp for display
+  // Format timestamp for display - simple function, no dependencies
   const formatTimestamp = (timestamp: number) => {
     if (isLoading || timestamp === 0) return '...';
     return new Date(timestamp).toLocaleString();
   };
 
-  // Safe update function that prevents future dates
-  const safeUpdateTimeRange = useCallback((start: number, end: number) => {
+  // Define a simple update function first - no dependencies
+  const updateTimeRange = (start: number, end: number, skipInitialCallback: boolean = false) => {
     const currentTime = Date.now();
 
     // Ensure we don't use future dates
@@ -80,8 +80,8 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     const safeEnd = Math.min(end, currentTime);
 
     if (safeStart > 0 && safeEnd > 0 && safeStart < safeEnd) {
-      // Only call onTimeRangeChange if this is not the initial render
-      if (!initialRenderRef.current) {
+      // Only call onTimeRangeChange if this is not the initial render or if explicitly told to skip
+      if (!initialRenderRef.current || !skipInitialCallback) {
         console.log(`TimeSlider: Updating time range to ${new Date(safeStart).toISOString()} - ${new Date(safeEnd).toISOString()}`);
         onTimeRangeChange(safeStart, safeEnd);
       } else {
@@ -91,7 +91,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     } else {
       console.log('TimeSlider: Invalid time range, not updating');
     }
-  }, [onTimeRangeChange]);
+  };
 
   // Debounced version of the update function
   const debouncedUpdateTimeRange = useCallback((start: number, end: number) => {
@@ -100,9 +100,9 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     }
 
     timeoutRef.current = setTimeout(() => {
-      safeUpdateTimeRange(start, end);
+      updateTimeRange(start, end);
     }, 1000); // 1 second debounce
-  }, [safeUpdateTimeRange]);
+  }, []);
 
   // Fetch min/max timestamps from the backend
   const fetchTimeRange = useCallback(async () => {
@@ -131,7 +131,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
          setMinTimestamp(safeStart);
          setMaxTimestamp(maxTs);
          setCurrentTimeRange([safeStart, maxTs]);
-         safeUpdateTimeRange(safeStart, maxTs);
+         updateTimeRange(safeStart, maxTs, true);
       } else {
         setMinTimestamp(minTs);
         setMaxTimestamp(maxTs);
@@ -140,7 +140,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
         const defaultStart = Math.max(minTs, maxTs - 24 * 60 * 60 * 1000);
 
         setCurrentTimeRange([defaultStart, maxTs]);
-        safeUpdateTimeRange(defaultStart, maxTs);
+        updateTimeRange(defaultStart, maxTs, true);
       }
     } catch (error: any) {
       console.error("Failed to fetch time range:", error);
@@ -152,7 +152,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
       setMinTimestamp(oneYearAgo);
       setMaxTimestamp(currentTime);
       setCurrentTimeRange([errorStart, currentTime]);
-      safeUpdateTimeRange(errorStart, currentTime);
+      updateTimeRange(errorStart, currentTime, true);
 
       toast({
         title: 'Error Fetching Time Range',
@@ -164,7 +164,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [safeUpdateTimeRange, toast]);
+  }, [toast]);
 
   // Handle slider changes
   const handleSliderChange = useCallback((val: [number, number]) => {
