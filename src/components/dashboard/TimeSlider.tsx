@@ -41,22 +41,27 @@ interface TimeSliderProps {
 }
 
 const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
-  // Initialize with default values that won't trigger immediate API calls
-  // Use past dates to avoid querying future dates which won't have data
+  // Initialize constants first
   const now = Date.now();
   const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000; // One year ago
   const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000; // One month ago
 
-  // Use a wider default range to increase chances of finding data
+  // Initialize all state variables at the top
   const [minTimestamp, setMinTimestamp] = useState<number>(oneYearAgo);
   const [maxTimestamp, setMaxTimestamp] = useState<number>(now);
   const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([oneMonthAgo, now]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [animationInterval, setAnimationInterval] = useState<NodeJS.Timeout | null>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState<boolean>(false);
+
+  // Initialize hooks
   const toast = useToast();
 
-  // Use refs for debouncing and tracking initial render
+  // Initialize refs
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initialRenderRef = useRef<boolean>(true);
 
@@ -171,8 +176,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     }
   }, [debouncedUpdateTimeRange]);
 
-  // Add state for playback speed
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  // Playback speed is already defined at the top
 
   // Animation logic with speed control
   const startAnimation = useCallback(() => {
@@ -263,10 +267,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     return <Box p={4} borderWidth="1px" borderRadius="lg"><Spinner size="md" /></Box>;
   }
 
-  // Add state for custom date selection
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [showCustomDatePicker, setShowCustomDatePicker] = useState<boolean>(false);
+  // Custom date selection states are already defined at the top
 
   // Function to handle custom date selection
   const handleCustomDateApply = useCallback(() => {
@@ -404,9 +405,14 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
                   icon={<FaCalendarAlt />}
                   size="xs"
                   onClick={() => {
-                    // Initialize with current range
-                    setCustomStartDate(new Date(currentTimeRange[0]).toISOString().split('T')[0]);
-                    setCustomEndDate(new Date(currentTimeRange[1]).toISOString().split('T')[0]);
+                    // Initialize with current range - include time part
+                    const startDate = new Date(currentTimeRange[0]);
+                    const endDate = new Date(currentTimeRange[1]);
+
+                    // Format as YYYY-MM-DDTHH:MM
+                    setCustomStartDate(startDate.toISOString().slice(0, 16));
+                    setCustomEndDate(endDate.toISOString().slice(0, 16));
+
                     setShowCustomDatePicker(true);
                   }}
                 />

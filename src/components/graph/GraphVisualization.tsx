@@ -18,10 +18,17 @@ interface GraphVisualizationProps {
 }
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime }) => {
+  // Initialize all state variables at the top
   const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]); // Use ElementDefinition[]
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
+
+  // Initialize refs
   const cyRef = useRef<cytoscape.Core | null>(null); // Ref to store cytoscape instance
+  const nodePositionsRef = useRef<Record<string, { x: number, y: number }>>({});
+
+  // Initialize hooks
   const toast = useToast();
 
   // Memoize fetchData to prevent unnecessary refetches if props haven't changed
@@ -235,8 +242,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     animationDuration: 500
   };
 
-  // Store previous node positions
-  const nodePositionsRef = useRef<Record<string, { x: number, y: number }>>({});
+  // nodePositionsRef is already defined at the top
 
   // Setup event listeners and handle smooth transitions
   useEffect(() => {
@@ -383,8 +389,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     );
   }
 
-  // Add state for animation settings
-  const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
+  // Animation settings are already defined at the top
 
   // Toggle animation setting
   const toggleAnimation = () => {
