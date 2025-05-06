@@ -5,6 +5,7 @@ import GraphVisualization from "@/components/graph/GraphVisualization"; // Adjus
 import KpiSummary from "@/components/dashboard/KpiSummary"; // Adjust path if needed
 import AlertsList from "@/components/dashboard/AlertsList"; // Adjust path if needed
 import RiskList from "@/components/dashboard/RiskList"; // Adjust path if needed
+import DatasetUploader from "@/components/dashboard/DatasetUploader"; // Dataset uploader component
 
 export default function Home() {
   return (
@@ -21,6 +22,15 @@ export default function Home() {
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Executive Summary</Heading>
           <KpiSummary />
+        </Box>
+
+        <Divider />
+
+        {/* Dataset Uploader */}
+        <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
+          <Heading size="md" mb={3}>Dataset Management</Heading>
+          <Text mb={4} color="gray.500">Upload JSON datasets to populate the Neo4j database. The dataset should follow the format specified in the documentation.</Text>
+          <DatasetUploader />
         </Box>
 
         <Divider />

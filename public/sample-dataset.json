@@ -1,0 +1,108 @@
+{
+  "nodes": [
+    {
+      "uid": "1",
+      "type": "Server",
+      "showname": "Web Server",
+      "properties": {
+        "ip": "192.168.1.10",
+        "os": "Linux",
+        "version": "Ubuntu 20.04"
+      },
+      "icon": "icons/server.png"
+    },
+    {
+      "uid": "2",
+      "type": "Application",
+      "showname": "CRM System",
+      "properties": {
+        "version": "3.2.1",
+        "vendor": "SalesForce",
+        "criticality": "High"
+      },
+      "icon": "icons/application.png"
+    },
+    {
+      "uid": "3",
+      "type": "Database",
+      "showname": "Customer Database",
+      "properties": {
+        "type": "PostgreSQL",
+        "version": "13.4",
+        "size": "500GB"
+      },
+      "icon": "icons/database.png"
+    },
+    {
+      "uid": "4",
+      "type": "User",
+      "showname": "Admin User",
+      "properties": {
+        "username": "admin",
+        "role": "Administrator",
+        "department": "IT"
+      },
+      "icon": "icons/user.png"
+    },
+    {
+      "uid": "5",
+      "type": "Vulnerability",
+      "showname": "SQL Injection",
+      "properties": {
+        "cve": "CVE-2021-1234",
+        "severity": "Critical",
+        "description": "SQL injection vulnerability in login form"
+      },
+      "icon": "icons/vulnerability.png"
+    }
+  ],
+  "edges": [
+    {
+      "from": "1",
+      "to": "2",
+      "type": "HOSTS",
+      "properties": {
+        "since": "2023-01-15"
+      }
+    },
+    {
+      "from": "2",
+      "to": "3",
+      "type": "CONNECTS_TO",
+      "properties": {
+        "protocol": "JDBC",
+        "encrypted": true
+      }
+    },
+    {
+      "from": "4",
+      "to": "1",
+      "type": "HAS_ACCESS",
+      "properties": {
+        "permission": "root",
+        "method": "SSH"
+      }
+    },
+    {
+      "from": "5",
+      "to": "2",
+      "type": "AFFECTS",
+      "properties": {
+        "discovered": "2023-05-10",
+        "patched": false
+      }
+    }
+  ],
+  "storedQueries": [
+    {
+      "query": "MATCH (n)-[r]->(m) RETURN n,r,m",
+      "lang": "cypher",
+      "description": "Retrieve all nodes and relationships"
+    },
+    {
+      "query": "MATCH (v:Vulnerability)-[:AFFECTS]->(a) WHERE v.properties.severity = 'Critical' RETURN v,a",
+      "lang": "cypher",
+      "description": "Find all critical vulnerabilities and affected assets"
+    }
+  ]
+}
