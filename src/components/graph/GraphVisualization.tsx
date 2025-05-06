@@ -18,8 +18,12 @@ interface GraphVisualizationProps {
 }
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime }) => {
+  // Default safe values
+  const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+  const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+
   // Initialize all state variables at the top
-  const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]); // Use ElementDefinition[]
+  const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]); 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
@@ -32,12 +36,36 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   // Initialize hooks
   const toast = useToast();
 
-  // Memoize fetchData to prevent unnecessary refetches if props haven't changed
-  // This function doesn't use startTime/endTime from props directly - it uses the parameters
+  // This is a helper function NOT using hooks, so it's safe to define here
+  const validateTimeRange = (start: number, end: number) => {
+    // Basic validation
+    if (!start || !end || isNaN(start) || isNaN(end) || 
+        !Number.isFinite(start) || !Number.isFinite(end) || 
+        start <= 0 || end <= 0 || start >= end) {
+      return false;
+    }
+    
+    // System clock validation
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Memoize fetchData to prevent unnecessary refetches
   const fetchData = useCallback(async (start: number, end: number) => {
-    // Guard against zero values
+    // Simple validation - don't use validation function here to avoid hook dependency
     if (!start || !end || start <= 0 || end <= 0 || start >= end) {
       console.error(`fetchData called with invalid parameters: start=${start}, end=${end}`);
+      return;
+    }
+
+    // Don't refetch if parameters are the same
+    if (lastFetchParams && lastFetchParams.start === start && lastFetchParams.end === end) {
+      console.log("Skipping duplicate fetch with same parameters");
       return;
     }
 
@@ -45,10 +73,10 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     setError(null);
 
     try {
-      // Store the fetch parameters to prevent duplicate fetches
+      // Store the fetch parameters
       setLastFetchParams({ start, end });
 
-      // Construct URL with time range parameters
+      // Make the API request
       const url = `/api/graph-data?startTime=${start}&endTime=${end}`;
       const response = await fetch(url);
 
@@ -103,52 +131,30 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     } finally {
       setLoading(false);
     }
-  }, [toast]); // Only depends on toast, not on props
+  }, [toast, lastFetchParams]); // Only include toast and lastFetchParams in dependencies
 
-  // Separate effect for validating and handling time range changes
+  // Handle time range changes
   useEffect(() => {
-    // Default safe values to use as fallbacks
-    const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
-    const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+    // If times are invalid, use safe defaults
+    let effectiveStart = startTime;
+    let effectiveEnd = endTime;
 
-    // Validate inputs first - using early returns for clarity
-    if (!startTime || !endTime || isNaN(startTime) || isNaN(endTime) || 
-        !Number.isFinite(startTime) || !Number.isFinite(endTime) || 
-        startTime <= 0 || endTime <= 0 || startTime >= endTime) {
-      console.error(`GraphVisualization: Invalid time range values: startTime=${startTime}, endTime=${endTime}`);
-      // Use safe fallback values instead of returning early
-      fetchData(safeStartTime, safeCurrentTime);
-      return;
-    }
-
-    // Check for system clock issues (future years)
-    const startDate = new Date(startTime);
-    const endDate = new Date(endTime);
-    const currentYear = new Date().getFullYear();
-
-    if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
-      console.warn(`GraphVisualization: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
-      console.log(`GraphVisualization: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
-      fetchData(safeStartTime, safeCurrentTime);
-      return;
+    if (!validateTimeRange(startTime, endTime)) {
+      console.error(`GraphVisualization: Invalid time range: startTime=${startTime}, endTime=${endTime}`);
+      effectiveStart = safeStartTime;
+      effectiveEnd = safeCurrentTime;
     }
 
     // Ensure we're not using future dates
     const currentTime = Date.now();
-    const safeStart = Math.min(startTime, currentTime);
-    const safeEnd = Math.min(endTime, currentTime);
+    const safeStart = Math.min(effectiveStart, currentTime);
+    const safeEnd = Math.min(effectiveEnd, currentTime);
 
-    // Prevent duplicate fetches
-    if (lastFetchParams && lastFetchParams.start === safeStart && lastFetchParams.end === safeEnd) {
-      console.log("Skipping duplicate fetch with same parameters");
-      return;
-    }
-
-    // Fetch data with validated parameters
+    // Fetch data with validated times
     fetchData(safeStart, safeEnd);
-  }, [startTime, endTime, fetchData, lastFetchParams]);
+  }, [startTime, endTime, fetchData, safeStartTime, safeCurrentTime]);
 
-  // Enhanced stylesheet (keep as is, filtering happens via data fetching)
+  // Enhanced stylesheet (keep as is)
   const stylesheet: cytoscape.Stylesheet[] = [
     {
       selector: 'node',
@@ -268,8 +274,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     }
   ];
 
-  // Layout configuration (keep as is)
-  const layout = {
+  // Basic layout configuration
+  const layoutConfig = {
     name: 'cose',
     idealEdgeLength: 120,
     nodeOverlap: 30,
@@ -278,8 +284,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     padding: 40,
     randomize: true,
     componentSpacing: 150,
-    nodeRepulsion: (node: any) => 450000,
-    edgeElasticity: (edge: any) => 150,
+    nodeRepulsion: () => 450000,
+    edgeElasticity: () => 150,
     nestingFactor: 5,
     gravity: 80,
     numIter: 1500,
@@ -290,100 +296,128 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     animationDuration: 500
   };
 
-  // nodePositionsRef is already defined at the top
+  // Store and apply node positions
+  const storeNodePositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    
+    const positions: Record<string, { x: number, y: number }> = {};
+    cy.nodes().forEach((node) => {
+      const position = node.position();
+      positions[node.id()] = { x: position.x, y: position.y };
+    });
+    nodePositionsRef.current = positions;
+  }, []);
 
-  // Setup event listeners and handle smooth transitions
+  const applyStoredPositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    
+    const positions = nodePositionsRef.current;
+    cy.nodes().forEach((node) => {
+      if (positions[node.id()]) {
+        node.position(positions[node.id()]);
+      }
+    });
+  }, []);
+
+  // Handle events and animations
+  const setupCytoscapeEvents = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    
+    // Clear previous listeners
+    cy.removeAllListeners();
+
+    // Hover effects
+    cy.on('mouseover', 'node', (event) => {
+      event.target.addClass('hovered');
+    });
+    
+    cy.on('mouseout', 'node', (event) => {
+      event.target.removeClass('hovered');
+    });
+
+    // Node click events
+    cy.on('tap', 'node', (event) => {
+      const nodeData = event.target.data();
+      console.log('Node clicked:', nodeData);
+      toast({
+        title: `Node Clicked: ${nodeData.label || nodeData.id}`,
+        description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`,
+        status: 'info',
+        duration: 3000,
+        isClosable: true,
+      });
+    });
+
+    // Edge click events
+    cy.on('tap', 'edge', (event) => {
+      const edgeData = event.target.data();
+      console.log('Edge clicked:', edgeData);
+      toast({
+        title: `Edge Clicked: ${edgeData.label || edgeData.id}`,
+        description: `Source: ${edgeData.source}, Target: ${edgeData.target}`,
+        status: 'info',
+        duration: 3000,
+        isClosable: true,
+      });
+    });
+
+    // Store positions when layout completes
+    cy.on('layoutstop', storeNodePositions);
+
+    return () => {
+      cy.off('layoutstop', storeNodePositions);
+    };
+  }, [toast, storeNodePositions]);
+
+  // Setup cytoscape and handle visualization
   useEffect(() => {
     const cy = cyRef.current;
-    if (cy) {
-      cy.removeAllListeners(); // Clear previous listeners
+    if (!cy) return;
 
-      // Event listeners for hover effects
-      cy.on('mouseover', 'node', (event) => {
-        event.target.addClass('hovered');
-      });
-      cy.on('mouseout', 'node', (event) => {
-        event.target.removeClass('hovered');
-      });
+    // Apply stored positions before running layout
+    applyStoredPositions();
 
-      // Event listener for node clicks
-      cy.on('tap', 'node', (event) => {
-        const nodeData = event.target.data();
-        console.log('Node clicked:', nodeData);
-        toast({
-          title: `Node Clicked: ${nodeData.label || nodeData.id}`,
-          description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`,
-          status: 'info',
-          duration: 3000,
-          isClosable: true,
-        });
-      });
-
-      // Event listener for edge clicks
-      cy.on('tap', 'edge', (event) => {
-        const edgeData = event.target.data();
-        console.log('Edge clicked:', edgeData);
-        toast({
-          title: `Edge Clicked: ${edgeData.label || edgeData.id}`,
-          description: `Source: ${edgeData.source}, Target: ${edgeData.target}`,
-          status: 'info',
-          duration: 3000,
-          isClosable: true,
-        });
-      });
-
-      // Store current node positions before layout
-      const storeNodePositions = () => {
-        const positions: Record<string, { x: number, y: number }> = {};
-        cy.nodes().forEach((node) => {
-          const position = node.position();
-          positions[node.id()] = { x: position.x, y: position.y };
-        });
-        nodePositionsRef.current = positions;
-      };
-
-      // Apply stored positions to existing nodes
-      const applyStoredPositions = () => {
-        const positions = nodePositionsRef.current;
-        cy.nodes().forEach((node) => {
-          if (positions[node.id()]) {
-            node.position(positions[node.id()]);
-          }
-        });
-      };
-
-      // Apply stored positions to existing nodes before running layout
-      applyStoredPositions();
-
-      // Run layout with animation
+    // Run layout with animation settings
+    const hasNewNodes = cy.nodes().some(node => !nodePositionsRef.current[node.id()]);
+    
+    if (hasNewNodes || cy.nodes().length === 0) {
       const layoutOptions = {
-        ...layout,
+        ...layoutConfig,
         animate: animationEnabled,
         animationDuration: animationEnabled ? 800 : 0,
-        randomize: false, // Don't randomize positions for smoother transitions
-        fit: false // Don't fit to viewport to maintain user's view
+        randomize: false,
+        fit: false
       };
-
-      // Only run layout if there are new nodes
-      const hasNewNodes = cy.nodes().some(node => !nodePositionsRef.current[node.id()]);
-
-      if (hasNewNodes || cy.nodes().length === 0) {
-        // Run layout for new nodes
-        const currentLayout = cy.layout(layoutOptions);
-        currentLayout.run();
-      }
-
-      // Store positions after layout completes
-      cy.on('layoutstop', storeNodePositions);
-
-      return () => {
-        // Store positions before unmounting
-        storeNodePositions();
-        cy.off('layoutstop', storeNodePositions);
-      };
+      
+      const layout = cy.layout(layoutOptions);
+      layout.run();
     }
-  }, [elements, toast, layout, animationEnabled]); // Add animationEnabled to dependencies
 
+    // Setup events
+    const cleanup = setupCytoscapeEvents();
+    
+    // Store positions before unmounting
+    return () => {
+      storeNodePositions();
+      if (cleanup) cleanup();
+    };
+  }, [elements, applyStoredPositions, storeNodePositions, setupCytoscapeEvents, animationEnabled]);
+
+  // Toggle animation handler
+  const toggleAnimation = useCallback(() => {
+    setAnimationEnabled(!animationEnabled);
+    toast({
+      title: animationEnabled ? "Animations disabled" : "Animations enabled",
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+  }, [animationEnabled, toast]);
+
+  // Loading state
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="500px">
@@ -393,9 +427,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     );
   }
 
+  // Error state
   if (error) {
-    // Determine if this is a Neo4j error or another type
-    const isNeo4jError = error.includes('Neo4j') || error.includes('Cypher') || error.includes('LIMIT');
+    const isNeo4jError = error.includes('Neo4j') || error.includes('Cypher');
     const isDataError = error.includes('No data') || error.includes('empty');
 
     return (
@@ -426,6 +460,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     );
   }
 
+  // Empty state
   if (!elements || elements.length === 0) {
     return (
       <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="500px" p={4}>
@@ -437,19 +472,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     );
   }
 
-  // Animation settings are already defined at the top
-
-  // Toggle animation setting
-  const toggleAnimation = () => {
-    setAnimationEnabled(!animationEnabled);
-    toast({
-      title: animationEnabled ? "Animations disabled" : "Animations enabled",
-      status: "info",
-      duration: 2000,
-      isClosable: true,
-    });
-  };
-
+  // Render the graph
   return (
     <Box border="1px solid #eee" borderRadius="md" overflow="hidden" height="600px" width="100%" position="relative">
       {/* Animation toggle button */}
@@ -468,21 +491,10 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       </Box>
 
       <CytoscapeComponent
-        // Remove the key prop to prevent full re-renders
         elements={CytoscapeComponent.normalizeElements(elements)}
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
-        layout={{
-          ...layout,
-          // Enable or disable animations based on user preference
-          animate: animationEnabled,
-          // Increase animation duration for smoother transitions
-          animationDuration: animationEnabled ? 800 : 0,
-          // Use a more stable layout for smoother transitions
-          randomize: false,
-          // Preserve node positions between updates
-          fit: false
-        }}
+        layout={layoutConfig}
         cy={(cy) => { cyRef.current = cy; }}
         minZoom={0.2}
         maxZoom={2.5}
