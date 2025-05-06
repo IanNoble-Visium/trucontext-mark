@@ -10,9 +10,13 @@ import DatasetUploader from "@/components/dashboard/DatasetUploader"; // Dataset
 import TimeSlider from "@/components/dashboard/TimeSlider"; // Import the TimeSlider component
 
 export default function Home() {
-  // State to hold the time range from the slider
-  const [startTime, setStartTime] = useState<number>(0);
-  const [endTime, setEndTime] = useState<number>(0);
+  // Initialize with safe default values to prevent 0,0 issues
+  const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+  const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+  
+  // State to hold the time range from the slider - initialized with safe values
+  const [startTime, setStartTime] = useState<number>(safeStartTime);
+  const [endTime, setEndTime] = useState<number>(safeCurrentTime);
 
   // Callback function for the TimeSlider to update the time range
   // Using useCallback to ensure the function reference remains stable
@@ -26,6 +30,7 @@ export default function Home() {
     // Check for system clock issues (future years)
     const startDate = new Date(start);
     const endDate = new Date(end);
+    const currentYear = new Date().getFullYear();
 
     if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
       console.warn(`Home: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
@@ -44,6 +49,12 @@ export default function Home() {
     const currentTime = Date.now();
     const safeStart = Math.min(start, currentTime);
     const safeEnd = Math.min(end, currentTime);
+
+    // Additional safety check to prevent invalid ranges
+    if (safeStart <= 0 || safeEnd <= 0 || safeStart >= safeEnd) {
+      console.warn(`Home: Invalid time range values after sanitization: safeStart=${safeStart}, safeEnd=${safeEnd}`);
+      return;
+    }
 
     console.log(`Home: Time range changed to ${new Date(safeStart).toISOString()} - ${new Date(safeEnd).toISOString()}`);
     setStartTime(safeStart);
@@ -112,4 +123,3 @@ export default function Home() {
     </Box>
   );
 }
-
