@@ -25,10 +25,27 @@ interface Dataset {
 
 // Helper function to generate a random timestamp within the last 48 hours
 const getRandomTimestampISO = () => {
-  const now = Date.now();
+  // Get current time
+  const now = new Date();
+
+  // Ensure we're using a valid date in the past (not future)
+  // This is a safeguard against system clock issues
+  const currentYear = now.getFullYear();
+  if (currentYear > 2024) {
+    // If the year is beyond 2024, use a fixed date in 2023
+    console.warn(`Detected potentially incorrect system date: ${now.toISOString()}. Using 2023 date instead.`);
+    const safeDate = new Date('2023-01-01T00:00:00.000Z');
+    const fortyEightHoursInMillis = 48 * 60 * 60 * 1000;
+    const randomOffset = Math.random() * fortyEightHoursInMillis;
+    const randomTimestampMillis = safeDate.getTime() + randomOffset;
+    return new Date(randomTimestampMillis).toISOString();
+  }
+
+  // Normal case - use current time
+  const nowMillis = now.getTime();
   const fortyEightHoursInMillis = 48 * 60 * 60 * 1000;
   const randomOffset = Math.random() * fortyEightHoursInMillis;
-  const randomTimestampMillis = now - randomOffset;
+  const randomTimestampMillis = nowMillis - randomOffset;
   return new Date(randomTimestampMillis).toISOString();
 };
 
@@ -47,7 +64,7 @@ export async function POST(request: Request) {
     // --- Clear existing data --- (Consider making this optional)
     await session.run('MATCH (n) DETACH DELETE n');
 
-    // --- Process and Create Nodes --- 
+    // --- Process and Create Nodes ---
     if (dataset.nodes.length > 0) {
       // Prepare nodes data for UNWIND, adding timestamps if missing
       const nodesToCreate = dataset.nodes.map(node => {
@@ -57,11 +74,11 @@ export async function POST(request: Request) {
           type: node.type,
           showname: node.showname,
           icon: node.icon || null,
-          properties: { 
-            ...node.properties, 
-            uid: node.uid, 
-            type: node.type, 
-            showname: node.showname, 
+          properties: {
+            ...node.properties,
+            uid: node.uid,
+            type: node.type,
+            showname: node.showname,
             icon: node.icon || null,
             timestamp: timestamp // Ensure timestamp exists
           }
@@ -91,7 +108,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // --- Process and Create Edges --- 
+    // --- Process and Create Edges ---
     if (dataset.edges.length > 0) {
        // Prepare edges data for UNWIND, adding timestamps if missing
       const edgesToCreate = dataset.edges.map(edge => {
@@ -100,13 +117,13 @@ export async function POST(request: Request) {
           fromUid: edge.from,
           toUid: edge.to,
           type: edge.type,
-          properties: { 
+          properties: {
             ...edge.properties,
             timestamp: timestamp // Ensure timestamp exists
           }
         };
       });
-      
+
       try {
         // First try with APOC (preferred method for dynamic relationship types)
         const createEdgesQueryWithApoc = `

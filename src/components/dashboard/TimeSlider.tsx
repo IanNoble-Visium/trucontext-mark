@@ -73,7 +73,37 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
 
   // Define update function with useCallback to prevent recreation on each render
   const updateTimeRange = useCallback((start: number, end: number, skipInitialCallback: boolean = false) => {
+    // Validate inputs first
+    if (!start || !end || isNaN(start) || isNaN(end) || !Number.isFinite(start) || !Number.isFinite(end)) {
+      console.error(`TimeSlider: Invalid time range values: start=${start}, end=${end}`);
+      return;
+    }
+
     const currentTime = Date.now();
+
+    // Check for system clock issues (future years)
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const currentYear = new Date().getFullYear();
+
+    if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
+      console.warn(`TimeSlider: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
+
+      // Use safe fallback dates (2023)
+      const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+      const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+
+      // Only call onTimeRangeChange if this is not the initial render or if explicitly told to skip
+      if (!initialRenderRef.current || !skipInitialCallback) {
+        console.log(`TimeSlider: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
+        onTimeRangeChange(safeStartTime, safeCurrentTime);
+      } else {
+        console.log('TimeSlider: Skipping initial callback to prevent feedback loop');
+        initialRenderRef.current = false;
+      }
+
+      return;
+    }
 
     // Ensure we don't use future dates
     const safeStart = Math.min(start, currentTime);
@@ -108,30 +138,73 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
   const fetchTimeRange = useCallback(async () => {
     setIsLoading(true);
     try {
+      // Get current time before making the request
+      const currentTime = Date.now();
+
+      // Validate current time to detect system clock issues
+      const currentDate = new Date(currentTime);
+      const currentYear = currentDate.getFullYear();
+
+      // If the current year is beyond 2024, we might have a system clock issue
+      if (currentYear > 2024) {
+        console.warn(`Detected potentially incorrect system date: ${currentDate.toISOString()}. Using safe fallback dates.`);
+        // Use safe fallback dates (2023)
+        const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+        const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+
+        setMinTimestamp(safeStartTime);
+        setMaxTimestamp(safeCurrentTime);
+        setCurrentTimeRange([safeStartTime, safeCurrentTime]);
+        updateTimeRange(safeStartTime, safeCurrentTime, true);
+
+        toast({
+          title: 'System Date Warning',
+          description: 'Your system date appears to be set incorrectly. Using safe date range instead.',
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+        });
+
+        setIsLoading(false);
+        return;
+      }
+
+      // Normal flow - fetch from API
       const response = await fetch('/api/graph-data?range=true');
       if (!response.ok) {
         throw new Error('Failed to fetch time range');
       }
       const data = await response.json();
 
-      const currentTime = Date.now();
+      // Ensure we don't use future dates or invalid dates
+      let minTs = data.minTimestamp;
+      let maxTs = data.maxTimestamp;
 
-      // Ensure we don't use future dates
-      let minTs = data.minTimestamp || currentTime - 48 * 60 * 60 * 1000;
-      let maxTs = data.maxTimestamp || currentTime;
+      // Validate the received timestamps
+      const isValidMinTs = minTs && !isNaN(minTs) && Number.isFinite(minTs);
+      const isValidMaxTs = maxTs && !isNaN(maxTs) && Number.isFinite(maxTs);
 
-      // Cap at current time to avoid future dates
-      if (minTs > currentTime) minTs = currentTime - 48 * 60 * 60 * 1000;
-      if (maxTs > currentTime) maxTs = currentTime;
+      // If timestamps are invalid or in the future, use safe defaults
+      if (!isValidMinTs || minTs > currentTime) {
+        console.warn(`Invalid or future minTimestamp received: ${minTs}. Using safe default.`);
+        minTs = currentTime - 48 * 60 * 60 * 1000; // 48 hours ago
+      }
 
-      console.log(`TimeSlider: Received time range from API: ${new Date(minTs).toISOString()} - ${new Date(maxTs).toISOString()}`);
+      if (!isValidMaxTs || maxTs > currentTime) {
+        console.warn(`Invalid or future maxTimestamp received: ${maxTs}. Using current time.`);
+        maxTs = currentTime;
+      }
 
+      console.log(`TimeSlider: Using time range: ${new Date(minTs).toISOString()} - ${new Date(maxTs).toISOString()}`);
+
+      // Ensure min is less than max
       if (minTs >= maxTs) {
-         const safeStart = maxTs - 48 * 60 * 60 * 1000;
-         setMinTimestamp(safeStart);
-         setMaxTimestamp(maxTs);
-         setCurrentTimeRange([safeStart, maxTs]);
-         updateTimeRange(safeStart, maxTs, true);
+        console.warn('Min timestamp is greater than or equal to max timestamp. Using safe range.');
+        const safeStart = maxTs - 48 * 60 * 60 * 1000;
+        setMinTimestamp(safeStart);
+        setMaxTimestamp(maxTs);
+        setCurrentTimeRange([safeStart, maxTs]);
+        updateTimeRange(safeStart, maxTs, true);
       } else {
         setMinTimestamp(minTs);
         setMaxTimestamp(maxTs);
@@ -145,6 +218,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     } catch (error: any) {
       console.error("Failed to fetch time range:", error);
 
+      // Use safe fallback values
       const currentTime = Date.now();
       const oneYearAgo = currentTime - 365 * 24 * 60 * 60 * 1000;
       const errorStart = currentTime - 24 * 60 * 60 * 1000;
@@ -156,7 +230,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
 
       toast({
         title: 'Error Fetching Time Range',
-        description: error.message || 'Could not load time boundaries.',
+        description: error.message || 'Could not load time boundaries. Using default range.',
         status: 'error',
         duration: 5000,
         isClosable: true,

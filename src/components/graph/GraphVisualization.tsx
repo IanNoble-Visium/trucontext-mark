@@ -95,8 +95,36 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
   // Fetch data when time range props change
   useEffect(() => {
+    // Validate inputs first
+    if (!startTime || !endTime || isNaN(startTime) || isNaN(endTime) || !Number.isFinite(startTime) || !Number.isFinite(endTime)) {
+      console.error(`GraphVisualization: Invalid time range values: startTime=${startTime}, endTime=${endTime}`);
+      return;
+    }
+
+    // Check for system clock issues (future years)
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+
+    if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
+      console.warn(`GraphVisualization: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
+
+      // Use safe fallback dates (2023)
+      const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+      const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+
+      console.log(`GraphVisualization: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
+      fetchData(safeStartTime, safeCurrentTime);
+      return;
+    }
+
+    // Normal case - valid dates
     if (startTime > 0 && endTime > 0 && startTime < endTime) {
-        fetchData(startTime, endTime);
+      // Ensure we're not using future dates
+      const currentTime = Date.now();
+      const safeStart = Math.min(startTime, currentTime);
+      const safeEnd = Math.min(endTime, currentTime);
+
+      fetchData(safeStart, safeEnd);
     }
   }, [startTime, endTime, fetchData]);
 

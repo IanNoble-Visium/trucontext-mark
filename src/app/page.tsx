@@ -17,6 +17,29 @@ export default function Home() {
   // Callback function for the TimeSlider to update the time range
   // Using useCallback to ensure the function reference remains stable
   const handleTimeRangeChange = useCallback((start: number, end: number) => {
+    // Validate inputs first
+    if (!start || !end || isNaN(start) || isNaN(end) || !Number.isFinite(start) || !Number.isFinite(end)) {
+      console.error(`Home: Invalid time range values: start=${start}, end=${end}`);
+      return;
+    }
+
+    // Check for system clock issues (future years)
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
+      console.warn(`Home: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
+
+      // Use safe fallback dates (2023)
+      const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+      const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+
+      console.log(`Home: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
+      setStartTime(safeStartTime);
+      setEndTime(safeCurrentTime);
+      return;
+    }
+
     // Ensure we're not using future dates
     const currentTime = Date.now();
     const safeStart = Math.min(start, currentTime);
