@@ -23,6 +23,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
+  const [lastFetchParams, setLastFetchParams] = useState<{ start: number, end: number } | null>(null);
 
   // Initialize refs
   const cyRef = useRef<cytoscape.Core | null>(null); // Ref to store cytoscape instance
@@ -32,10 +33,21 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const toast = useToast();
 
   // Memoize fetchData to prevent unnecessary refetches if props haven't changed
+  // This function doesn't use startTime/endTime from props directly - it uses the parameters
   const fetchData = useCallback(async (start: number, end: number) => {
+    // Guard against zero values
+    if (!start || !end || start <= 0 || end <= 0 || start >= end) {
+      console.error(`fetchData called with invalid parameters: start=${start}, end=${end}`);
+      return;
+    }
+
     setLoading(true);
     setError(null);
+
     try {
+      // Store the fetch parameters to prevent duplicate fetches
+      setLastFetchParams({ start, end });
+
       // Construct URL with time range parameters
       const url = `/api/graph-data?startTime=${start}&endTime=${end}`;
       const response = await fetch(url);
@@ -91,42 +103,50 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     } finally {
       setLoading(false);
     }
-  }, [toast]); // Include toast in dependency array
+  }, [toast]); // Only depends on toast, not on props
 
-  // Fetch data when time range props change
+  // Separate effect for validating and handling time range changes
   useEffect(() => {
-    // Validate inputs first
-    if (!startTime || !endTime || isNaN(startTime) || isNaN(endTime) || !Number.isFinite(startTime) || !Number.isFinite(endTime)) {
+    // Default safe values to use as fallbacks
+    const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+    const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+
+    // Validate inputs first - using early returns for clarity
+    if (!startTime || !endTime || isNaN(startTime) || isNaN(endTime) || 
+        !Number.isFinite(startTime) || !Number.isFinite(endTime) || 
+        startTime <= 0 || endTime <= 0 || startTime >= endTime) {
       console.error(`GraphVisualization: Invalid time range values: startTime=${startTime}, endTime=${endTime}`);
+      // Use safe fallback values instead of returning early
+      fetchData(safeStartTime, safeCurrentTime);
       return;
     }
 
     // Check for system clock issues (future years)
     const startDate = new Date(startTime);
     const endDate = new Date(endTime);
+    const currentYear = new Date().getFullYear();
 
     if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
       console.warn(`GraphVisualization: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
-
-      // Use safe fallback dates (2023)
-      const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
-      const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
-
       console.log(`GraphVisualization: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
       fetchData(safeStartTime, safeCurrentTime);
       return;
     }
 
-    // Normal case - valid dates
-    if (startTime > 0 && endTime > 0 && startTime < endTime) {
-      // Ensure we're not using future dates
-      const currentTime = Date.now();
-      const safeStart = Math.min(startTime, currentTime);
-      const safeEnd = Math.min(endTime, currentTime);
+    // Ensure we're not using future dates
+    const currentTime = Date.now();
+    const safeStart = Math.min(startTime, currentTime);
+    const safeEnd = Math.min(endTime, currentTime);
 
-      fetchData(safeStart, safeEnd);
+    // Prevent duplicate fetches
+    if (lastFetchParams && lastFetchParams.start === safeStart && lastFetchParams.end === safeEnd) {
+      console.log("Skipping duplicate fetch with same parameters");
+      return;
     }
-  }, [startTime, endTime, fetchData]);
+
+    // Fetch data with validated parameters
+    fetchData(safeStart, safeEnd);
+  }, [startTime, endTime, fetchData, lastFetchParams]);
 
   // Enhanced stylesheet (keep as is, filtering happens via data fetching)
   const stylesheet: cytoscape.Stylesheet[] = [
@@ -472,4 +492,3 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 };
 
 export default GraphVisualization;
-
