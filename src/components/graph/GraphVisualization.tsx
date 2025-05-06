@@ -57,23 +57,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       console.log(`Fetched graph data for ${new Date(start).toISOString()} - ${new Date(end).toISOString()}:`, data.elements?.length ?? 0, "elements");
 
       // Ensure data.elements is an array before setting state
-      if (!data.elements || !Array.isArray(data.elements) || data.elements.length === 0) {
-        if (!data.elements) {
-          console.warn("Response did not contain elements array:", data);
-        } else if (!Array.isArray(data.elements)) {
-          console.warn("Elements is not an array:", data.elements);
-        } else {
-          console.warn("Elements array is empty");
-        }
-
-        // Increment empty results counter
-        emptyResultsCountRef.current += 1;
-        console.log(`Empty results count: ${emptyResultsCountRef.current}`);
-
+      if (!data.elements) {
+        console.warn("Response did not contain elements array:", data);
+        setElements([]);
+      } else if (!Array.isArray(data.elements)) {
+        console.warn("Elements is not an array:", data.elements);
         setElements([]);
       } else {
-        // Reset empty results counter when we get data
-        emptyResultsCountRef.current = 0;
         setElements(data.elements);
       }
     } catch (e: any) {
@@ -92,45 +82,10 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     }
   }, [toast]); // Include toast in dependency array
 
-  // Track consecutive empty results to prevent excessive API calls
-  const emptyResultsCountRef = useRef<number>(0);
-  const lastFetchTimeRef = useRef<number>(0);
-
   // Fetch data when time range props change
   useEffect(() => {
-    // Only fetch data if we have valid time range values
     if (startTime > 0 && endTime > 0 && startTime < endTime) {
-      const now = Date.now();
-
-      // Throttle API calls - don't fetch more than once every 1 second
-      if (now - lastFetchTimeRef.current < 1000) {
-        console.log('Throttling API call - too frequent');
-        return;
-      }
-
-      // If we've had 5 consecutive empty results, slow down the fetching
-      // to prevent hammering the server with useless requests
-      if (emptyResultsCountRef.current >= 5) {
-        if (now - lastFetchTimeRef.current < 5000) {
-          console.log('Throttling API call - too many empty results');
-          return;
-        }
-      }
-
-      // Check if we're querying future dates (which likely won't have data)
-      const currentDate = new Date();
-      if (startTime > currentDate.getTime() || endTime > currentDate.getTime()) {
-        console.log('Skipping fetch for future dates which likely have no data');
-        setElements([]);
-        setLoading(false);
-        return;
-      }
-
-      console.log(`Fetching data for time range: ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`);
-      lastFetchTimeRef.current = now;
-      fetchData(startTime, endTime);
-    } else {
-      console.log('Invalid time range, not fetching data');
+        fetchData(startTime, endTime);
     }
   }, [startTime, endTime, fetchData]);
 
@@ -154,28 +109,28 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       }
     },
     {
-      selector: 'node[type="Server"]',
+      selector: 'node[type="Server"]
       style: {
         'background-color': '#3498db',
         'shape': 'rectangle'
       }
     },
     {
-      selector: 'node[type="Workstation"]',
+      selector: 'node[type="Workstation"]
       style: {
         'background-color': '#2ecc71',
         'shape': 'ellipse'
       }
     },
     {
-      selector: 'node[type="User"]',
+      selector: 'node[type="User"]
       style: {
         'background-color': '#f1c40f',
         'shape': 'round-diamond'
       }
     },
     {
-      selector: 'node[type="ThreatActor"]',
+      selector: 'node[type="ThreatActor"]
       style: {
         'background-color': '#e74c3c',
         'shape': 'triangle',
@@ -184,21 +139,21 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       }
     },
     {
-      selector: 'node[riskLevel="High"]',
+      selector: 'node[riskLevel="High"]
       style: {
         'border-color': '#e74c3c',
         'border-width': '3px'
       }
     },
     {
-      selector: 'node[riskLevel="Medium"]',
+      selector: 'node[riskLevel="Medium"]
       style: {
         'border-color': '#f39c12',
         'border-width': '3px'
       }
     },
     {
-      selector: 'node[riskLevel="Low"]',
+      selector: 'node[riskLevel="Low"]
       style: {
         'border-color': '#2ecc71',
         'border-width': '2px'
@@ -219,7 +174,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       }
     },
     {
-        selector: 'edge[label="ATTACK"]',
+        selector: 'edge[label="ATTACK"]
         style: {
             'line-color': '#e74c3c',
             'target-arrow-color': '#e74c3c',
@@ -227,7 +182,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         }
     },
     {
-        selector: 'edge[label="DATA_TRANSFER"]',
+        selector: 'edge[label="DATA_TRANSFER"]
         style: {
             'line-color': '#3498db',
             'target-arrow-color': '#3498db',
@@ -294,7 +249,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         console.log('Node clicked:', nodeData);
         toast({
           title: `Node Clicked: ${nodeData.label || nodeData.id}`,
-          description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`,
+          description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`, 
           status: 'info',
           duration: 3000,
           isClosable: true,
@@ -306,13 +261,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         console.log('Edge clicked:', edgeData);
         toast({
           title: `Edge Clicked: ${edgeData.label || edgeData.id}`,
-          description: `Source: ${edgeData.source}, Target: ${edgeData.target}`,
+          description: `Source: ${edgeData.source}, Target: ${edgeData.target}`, 
           status: 'info',
           duration: 3000,
           isClosable: true,
         });
       });
-
+      
       // Re-run layout after elements are updated
       const currentLayout = cy.layout(layout);
       currentLayout.run();
@@ -361,7 +316,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
         layout={layout} // Layout is applied via useEffect now
-        cy={(cy) => { cyRef.current = cy; }}
+        cy={(cy) => { cyRef.current = cy; }} 
         minZoom={0.2}
         maxZoom={2.5}
       />
