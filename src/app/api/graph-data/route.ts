@@ -115,7 +115,21 @@ export async function GET(request: NextRequest) {
     let query = '';
     const params: Record<string, any> = { limit: neo4j.int(100) }; // Ensure limit is passed as an integer
 
+    // Check if the requested time range is in the future
+    const now = new Date();
     if (startTimeISO && endTimeISO) {
+      const startDate = new Date(startTimeISO);
+      const endDate = new Date(endTimeISO);
+
+      // If both dates are in the future, return empty result immediately
+      if (startDate > now && endDate > now) {
+        console.log('Requested time range is in the future, returning empty result');
+        return NextResponse.json({ elements: [] });
+      }
+
+      // Adjust query to handle future dates - cap at current time
+      const adjustedEndTimeISO = endDate > now ? now.toISOString() : endTimeISO;
+
       query = `
         MATCH (n)
         WHERE n.timestamp >= $startTime AND n.timestamp <= $endTime
@@ -128,7 +142,9 @@ export async function GET(request: NextRequest) {
         LIMIT $limit
       `;
       params.startTime = startTimeISO;
-      params.endTime = endTimeISO;
+      params.endTime = adjustedEndTimeISO;
+
+      console.log(`Querying time range: ${startTimeISO} - ${adjustedEndTimeISO}`);
     } else {
       // Default query if no time range specified (limited)
       query = `

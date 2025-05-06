@@ -57,13 +57,23 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       console.log(`Fetched graph data for ${new Date(start).toISOString()} - ${new Date(end).toISOString()}:`, data.elements?.length ?? 0, "elements");
 
       // Ensure data.elements is an array before setting state
-      if (!data.elements) {
-        console.warn("Response did not contain elements array:", data);
-        setElements([]);
-      } else if (!Array.isArray(data.elements)) {
-        console.warn("Elements is not an array:", data.elements);
+      if (!data.elements || !Array.isArray(data.elements) || data.elements.length === 0) {
+        if (!data.elements) {
+          console.warn("Response did not contain elements array:", data);
+        } else if (!Array.isArray(data.elements)) {
+          console.warn("Elements is not an array:", data.elements);
+        } else {
+          console.warn("Elements array is empty");
+        }
+
+        // Increment empty results counter
+        emptyResultsCountRef.current += 1;
+        console.log(`Empty results count: ${emptyResultsCountRef.current}`);
+
         setElements([]);
       } else {
+        // Reset empty results counter when we get data
+        emptyResultsCountRef.current = 0;
         setElements(data.elements);
       }
     } catch (e: any) {
@@ -82,11 +92,42 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     }
   }, [toast]); // Include toast in dependency array
 
+  // Track consecutive empty results to prevent excessive API calls
+  const emptyResultsCountRef = useRef<number>(0);
+  const lastFetchTimeRef = useRef<number>(0);
+
   // Fetch data when time range props change
   useEffect(() => {
     // Only fetch data if we have valid time range values
     if (startTime > 0 && endTime > 0 && startTime < endTime) {
+      const now = Date.now();
+
+      // Throttle API calls - don't fetch more than once every 1 second
+      if (now - lastFetchTimeRef.current < 1000) {
+        console.log('Throttling API call - too frequent');
+        return;
+      }
+
+      // If we've had 5 consecutive empty results, slow down the fetching
+      // to prevent hammering the server with useless requests
+      if (emptyResultsCountRef.current >= 5) {
+        if (now - lastFetchTimeRef.current < 5000) {
+          console.log('Throttling API call - too many empty results');
+          return;
+        }
+      }
+
+      // Check if we're querying future dates (which likely won't have data)
+      const currentDate = new Date();
+      if (startTime > currentDate.getTime() || endTime > currentDate.getTime()) {
+        console.log('Skipping fetch for future dates which likely have no data');
+        setElements([]);
+        setLoading(false);
+        return;
+      }
+
       console.log(`Fetching data for time range: ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`);
+      lastFetchTimeRef.current = now;
       fetchData(startTime, endTime);
     } else {
       console.log('Invalid time range, not fetching data');

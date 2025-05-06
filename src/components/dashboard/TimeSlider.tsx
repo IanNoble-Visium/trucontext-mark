@@ -23,12 +23,15 @@ interface TimeSliderProps {
 
 const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
   // Initialize with default values that won't trigger immediate API calls
+  // Use past dates to avoid querying future dates which won't have data
   const now = Date.now();
-  const fortyEightHoursAgo = now - 48 * 60 * 60 * 1000;
+  const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000; // One year ago
+  const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000; // One month ago
 
-  const [minTimestamp, setMinTimestamp] = useState<number>(fortyEightHoursAgo);
+  // Use a wider default range to increase chances of finding data
+  const [minTimestamp, setMinTimestamp] = useState<number>(oneYearAgo);
   const [maxTimestamp, setMaxTimestamp] = useState<number>(now);
-  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([fortyEightHoursAgo, now]);
+  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([oneMonthAgo, now]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [animationInterval, setAnimationInterval] = useState<NodeJS.Timeout | null>(null);
@@ -90,30 +93,38 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     // This might involve a global state or context, or a prop passed down.
   }, [fetchTimeRange]);
 
-  // Debounce function to limit API calls
-  const debounce = (func: Function, delay: number) => {
-    let timeoutId: NodeJS.Timeout;
-    return (...args: any[]) => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        func(...args);
-      }, delay);
-    };
-  };
+  // Use React's useRef for debouncing to maintain reference across renders
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debounced version of onTimeRangeChange
-  const debouncedTimeRangeChange = useCallback(
-    debounce((start: number, end: number) => {
-      onTimeRangeChange(start, end);
-    }, 300), // 300ms delay
-    [onTimeRangeChange]
-  );
+  const debouncedTimeRangeChange = useCallback((start: number, end: number) => {
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Set a new timeout
+    timeoutRef.current = setTimeout(() => {
+      // Only trigger if the range is valid and different from the current range
+      if (start > 0 && end > 0 && start < end) {
+        console.log(`TimeSlider: Debounced update with range ${new Date(start).toISOString()} - ${new Date(end).toISOString()}`);
+        onTimeRangeChange(start, end);
+      } else {
+        console.log('TimeSlider: Invalid time range, not updating');
+      }
+    }, 1000); // Increase to 1000ms (1 second) for better debouncing
+  }, [onTimeRangeChange]);
 
   // Handle slider changes
   const handleSliderChange = (val: [number, number]) => {
-    setCurrentTimeRange(val);
-    // Use debounced function to prevent too many API calls
-    debouncedTimeRangeChange(val[0], val[1]);
+    // Only update if the values are valid
+    if (val[0] > 0 && val[1] > 0 && val[0] < val[1]) {
+      setCurrentTimeRange(val);
+      // Use debounced function to prevent too many API calls
+      debouncedTimeRangeChange(val[0], val[1]);
+    } else {
+      console.log('TimeSlider: Ignoring invalid slider values');
+    }
   };
 
   // Format timestamp for display
@@ -122,24 +133,40 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     return new Date(timestamp).toLocaleString();
   };
 
-  // --- Animation Logic (Basic Example) ---
+  // --- Animation Logic (Improved with better throttling) ---
   const startAnimation = () => {
     if (isLoading || minTimestamp === maxTimestamp) return;
     setIsPlaying(true);
-    let currentEndTime = currentTimeRange[0]; // Start animation from the beginning of the current range
-    const step = (maxTimestamp - minTimestamp) / 100; // Example: 100 steps
+
+    // Start animation from the beginning of the current range
+    let currentEndTime = currentTimeRange[0];
+
+    // Reduce the number of steps and increase the interval for less frequent updates
+    const step = (maxTimestamp - minTimestamp) / 50;
+    let lastUpdateTime = 0;
 
     const interval = setInterval(() => {
+      const now = Date.now();
+
+      // Only update if at least 500ms have passed since the last update
+      if (now - lastUpdateTime < 500 && lastUpdateTime > 0) {
+        return;
+      }
+
+      lastUpdateTime = now;
       currentEndTime += step;
+
       if (currentEndTime >= maxTimestamp) {
         currentEndTime = maxTimestamp;
         stopAnimation(); // Stop when reaching the end
       }
+
       // Update slider to show progress up to currentEndTime
       setCurrentTimeRange([minTimestamp, currentEndTime]);
+
       // Use debounced function to prevent too many API calls during animation
       debouncedTimeRangeChange(minTimestamp, currentEndTime);
-    }, 200); // Adjust speed as needed
+    }, 500); // Increased to 500ms for less frequent updates
 
     setAnimationInterval(interval);
   };
