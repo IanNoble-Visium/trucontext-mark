@@ -17,9 +17,14 @@ export default function Home() {
   // Callback function for the TimeSlider to update the time range
   // Using useCallback to ensure the function reference remains stable
   const handleTimeRangeChange = useCallback((start: number, end: number) => {
-    console.log(`Home: Time range changed to ${new Date(start).toISOString()} - ${new Date(end).toISOString()}`);
-    setStartTime(start);
-    setEndTime(end);
+    // Ensure we're not using future dates
+    const currentTime = Date.now();
+    const safeStart = Math.min(start, currentTime);
+    const safeEnd = Math.min(end, currentTime);
+
+    console.log(`Home: Time range changed to ${new Date(safeStart).toISOString()} - ${new Date(safeEnd).toISOString()}`);
+    setStartTime(safeStart);
+    setEndTime(safeEnd);
   }, []);
 
   return (
