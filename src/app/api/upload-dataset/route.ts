@@ -23,30 +23,28 @@ interface Dataset {
   // storedQueries are ignored for now during upload
 }
 
-// Helper function to generate a random timestamp within the last 48 hours
+// Helper function to generate a random timestamp within the default time range
+// This ensures uploaded data is visible in the default time slider range
 const getRandomTimestampISO = () => {
-  // Get current time
-  const now = new Date();
+  // Use fixed dates that match the default time range in the TimeSlider component
+  // This ensures uploaded data is always visible in the default time range
+  const endDate = new Date('2023-12-31T23:59:59.999Z');
+  const startDate = new Date('2023-12-30T00:00:00.000Z');
 
-  // Ensure we're using a valid date in the past (not future)
-  // This is a safeguard against system clock issues
-  const currentYear = now.getFullYear();
-  if (currentYear > 2024) {
-    // If the year is beyond 2024, use a fixed date in 2023
-    console.warn(`Detected potentially incorrect system date: ${now.toISOString()}. Using 2023 date instead.`);
-    const safeDate = new Date('2023-01-01T00:00:00.000Z');
-    const fortyEightHoursInMillis = 48 * 60 * 60 * 1000;
-    const randomOffset = Math.random() * fortyEightHoursInMillis;
-    const randomTimestampMillis = safeDate.getTime() + randomOffset;
-    return new Date(randomTimestampMillis).toISOString();
-  }
+  // Calculate the time range in milliseconds
+  const timeRangeMillis = endDate.getTime() - startDate.getTime();
 
-  // Normal case - use current time
-  const nowMillis = now.getTime();
-  const fortyEightHoursInMillis = 48 * 60 * 60 * 1000;
-  const randomOffset = Math.random() * fortyEightHoursInMillis;
-  const randomTimestampMillis = nowMillis - randomOffset;
-  return new Date(randomTimestampMillis).toISOString();
+  // Generate a random offset within this range
+  const randomOffset = Math.random() * timeRangeMillis;
+
+  // Calculate the random timestamp
+  const randomTimestampMillis = startDate.getTime() + randomOffset;
+
+  // Convert to ISO string
+  const timestamp = new Date(randomTimestampMillis).toISOString();
+
+  console.log(`Generated timestamp within default range: ${timestamp}`);
+  return timestamp;
 };
 
 export async function POST(request: Request) {
@@ -150,7 +148,21 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ message: 'Dataset uploaded successfully with timestamps ensured.' }, { status: 200 });
+    // Calculate the time range used for the timestamps
+    const startDate = new Date('2023-12-30T00:00:00.000Z');
+    const endDate = new Date('2023-12-31T23:59:59.999Z');
+
+    return NextResponse.json({
+      message: 'Dataset uploaded successfully with timestamps ensured.',
+      details: {
+        nodesCount: dataset.nodes.length,
+        edgesCount: dataset.edges.length,
+        timeRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString()
+        }
+      }
+    }, { status: 200 });
 
   } catch (error: any) {
     console.error('Dataset upload failed:', error);

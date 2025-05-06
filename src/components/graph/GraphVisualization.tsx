@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
-import { Box, Spinner, Text, useToast, IconButton, Tooltip } from '@chakra-ui/react';
-import { FaCog } from 'react-icons/fa';
+import { Box, Spinner, Text, useToast, IconButton, Tooltip, HStack, Select, FormLabel } from '@chakra-ui/react';
+import { FaCog, FaBolt } from 'react-icons/fa';
 import cytoscape from 'cytoscape'; // Import core cytoscape
 
 // Define the structure of the elements expected by Cytoscape
@@ -23,10 +23,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
 
   // Initialize all state variables at the top
-  const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]); 
+  const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]);
+  const [currentElements, setCurrentElements] = useState<cytoscape.ElementDefinition[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
+  const [transitionSpeed, setTransitionSpeed] = useState<number>(500); // Transition speed in ms
   const [lastFetchParams, setLastFetchParams] = useState<{ start: number, end: number } | null>(null);
 
   // Initialize refs
@@ -39,19 +41,19 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   // This is a helper function NOT using hooks, so it's safe to define here
   const validateTimeRange = (start: number, end: number) => {
     // Basic validation
-    if (!start || !end || isNaN(start) || isNaN(end) || 
-        !Number.isFinite(start) || !Number.isFinite(end) || 
+    if (!start || !end || isNaN(start) || isNaN(end) ||
+        !Number.isFinite(start) || !Number.isFinite(end) ||
         start <= 0 || end <= 0 || start >= end) {
       return false;
     }
-    
+
     // System clock validation
     const startDate = new Date(start);
     const endDate = new Date(end);
     if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
       return false;
     }
-    
+
     return true;
   };
 
@@ -115,7 +117,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         console.warn("Elements is not an array:", data.elements);
         setElements([]);
       } else {
+        // Store all elements from the API
         setElements(data.elements);
+
+        // Initialize current elements if empty
+        if (currentElements.length === 0) {
+          setCurrentElements(data.elements);
+        }
       }
     } catch (e: any) {
       console.error("Failed to fetch graph data:", e);
@@ -300,7 +308,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const storeNodePositions = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    
+
     const positions: Record<string, { x: number, y: number }> = {};
     cy.nodes().forEach((node) => {
       const position = node.position();
@@ -312,7 +320,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const applyStoredPositions = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    
+
     const positions = nodePositionsRef.current;
     cy.nodes().forEach((node) => {
       if (positions[node.id()]) {
@@ -325,7 +333,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const setupCytoscapeEvents = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    
+
     // Clear previous listeners
     cy.removeAllListeners();
 
@@ -333,7 +341,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     cy.on('mouseover', 'node', (event) => {
       event.target.addClass('hovered');
     });
-    
+
     cy.on('mouseout', 'node', (event) => {
       event.target.removeClass('hovered');
     });
@@ -372,6 +380,109 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     };
   }, [toast, storeNodePositions]);
 
+  // Handle smooth transitions between time ranges
+  useEffect(() => {
+    if (!elements.length) return;
+
+    // Find elements to add (in elements but not in currentElements)
+    const elementsToAdd = elements.filter(newEl =>
+      !currentElements.some(curEl =>
+        curEl.data.id === newEl.data.id
+      )
+    );
+
+    // Find elements to remove (in currentElements but not in elements)
+    const elementsToRemove = currentElements.filter(curEl =>
+      !elements.some(newEl =>
+        newEl.data.id === curEl.data.id
+      )
+    );
+
+    if (elementsToAdd.length === 0 && elementsToRemove.length === 0) {
+      return; // No changes needed
+    }
+
+    console.log(`Transitioning: Adding ${elementsToAdd.length} elements, removing ${elementsToRemove.length} elements`);
+
+    if (!animationEnabled) {
+      // If animations disabled, update immediately
+      setCurrentElements(elements);
+      return;
+    }
+
+    // First remove elements with animation
+    if (elementsToRemove.length > 0) {
+      const cy = cyRef.current;
+      if (cy) {
+        // Find elements to remove in the graph
+        const elsToRemove = cy.elements().filter(el =>
+          elementsToRemove.some(remEl => remEl.data.id === el.id())
+        );
+
+        // Animate opacity before removing
+        elsToRemove.animate({
+          style: { 'opacity': 0 },
+          duration: transitionSpeed
+        }, {
+          complete: () => {
+            // After fade out, update the current elements by removing these elements
+            setCurrentElements(currentElements.filter(curEl =>
+              !elementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
+            ));
+
+            // Then add new elements after a short delay
+            setTimeout(() => {
+              if (elementsToAdd.length > 0) {
+                setCurrentElements(prev => [...prev, ...elementsToAdd]);
+              }
+            }, 100);
+          }
+        });
+      }
+    } else if (elementsToAdd.length > 0) {
+      // If only adding elements (no removals), add them directly
+      setCurrentElements(prev => [...prev, ...elementsToAdd]);
+
+      // After a short delay, animate the new elements
+      setTimeout(() => {
+        const cy = cyRef.current;
+        if (cy) {
+          // Find the newly added elements
+          const newEls = cy.elements().filter(el =>
+            elementsToAdd.some(addEl => addEl.data.id === el.id())
+          );
+
+          // Start with opacity 0 and fade in
+          newEls.style({ 'opacity': 0 });
+
+          // Animate the entrance
+          newEls.animate({
+            style: { 'opacity': 1 },
+            duration: transitionSpeed
+          });
+        }
+      }, 50);
+    }
+  }, [elements, currentElements, animationEnabled, transitionSpeed]);
+
+  // Listen for transition speed change events from TimeSlider
+  useEffect(() => {
+    const handleTransitionSpeedChange = (event: CustomEvent) => {
+      if (event.detail && typeof event.detail.speed === 'number') {
+        console.log(`GraphVisualization: Received transition speed change: ${event.detail.speed}ms`);
+        setTransitionSpeed(event.detail.speed);
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('transitionspeedchange', handleTransitionSpeedChange as EventListener);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('transitionspeedchange', handleTransitionSpeedChange as EventListener);
+    };
+  }, []);
+
   // Setup cytoscape and handle visualization
   useEffect(() => {
     const cy = cyRef.current;
@@ -382,7 +493,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
     // Run layout with animation settings
     const hasNewNodes = cy.nodes().some(node => !nodePositionsRef.current[node.id()]);
-    
+
     if (hasNewNodes || cy.nodes().length === 0) {
       const layoutOptions = {
         ...layoutConfig,
@@ -391,20 +502,20 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         randomize: false,
         fit: false
       };
-      
+
       const layout = cy.layout(layoutOptions);
       layout.run();
     }
 
     // Setup events
     const cleanup = setupCytoscapeEvents();
-    
+
     // Store positions before unmounting
     return () => {
       storeNodePositions();
       if (cleanup) cleanup();
     };
-  }, [elements, applyStoredPositions, storeNodePositions, setupCytoscapeEvents, animationEnabled]);
+  }, [currentElements, applyStoredPositions, storeNodePositions, setupCytoscapeEvents, animationEnabled]);
 
   // Toggle animation handler
   const toggleAnimation = useCallback(() => {
@@ -416,6 +527,17 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       isClosable: true,
     });
   }, [animationEnabled, toast]);
+
+  // Change transition speed
+  const changeTransitionSpeed = useCallback((speed: number) => {
+    setTransitionSpeed(speed);
+    toast({
+      title: `Transition speed: ${speed}ms`,
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+  }, [toast]);
 
   // Loading state
   if (loading) {
@@ -461,7 +583,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   }
 
   // Empty state
-  if (!elements || elements.length === 0) {
+  if ((!elements || elements.length === 0) && (!currentElements || currentElements.length === 0)) {
     return (
       <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="500px" p={4}>
         <Text fontSize="lg" fontWeight="bold" mb={2}>No graph data available</Text>
@@ -475,23 +597,51 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   // Render the graph
   return (
     <Box border="1px solid #eee" borderRadius="md" overflow="hidden" height="600px" width="100%" position="relative">
-      {/* Animation toggle button */}
-      <Box position="absolute" top="10px" right="10px" zIndex="1">
-        <Tooltip label={animationEnabled ? "Disable animations" : "Enable animations"}>
-          <IconButton
-            aria-label="Toggle animations"
-            icon={<FaCog />}
-            size="sm"
-            onClick={toggleAnimation}
-            colorScheme={animationEnabled ? "blue" : "gray"}
-            opacity="0.7"
-            _hover={{ opacity: 1 }}
-          />
-        </Tooltip>
+      {/* Controls */}
+      <Box position="absolute" top="10px" right="10px" zIndex="1" bg="white" p={2} borderRadius="md" boxShadow="sm">
+        <HStack spacing={3}>
+          {/* Transition speed control */}
+          <HStack>
+            <Tooltip label="Transition speed">
+              <IconButton
+                aria-label="Transition speed"
+                icon={<FaBolt />}
+                size="sm"
+                colorScheme="teal"
+                opacity="0.7"
+                _hover={{ opacity: 1 }}
+              />
+            </Tooltip>
+            <Select
+              size="sm"
+              width="100px"
+              value={transitionSpeed}
+              onChange={(e) => changeTransitionSpeed(parseInt(e.target.value))}
+            >
+              <option value="200">Fast (200ms)</option>
+              <option value="500">Medium (500ms)</option>
+              <option value="1000">Slow (1s)</option>
+              <option value="2000">Very Slow (2s)</option>
+            </Select>
+          </HStack>
+
+          {/* Animation toggle button */}
+          <Tooltip label={animationEnabled ? "Disable animations" : "Enable animations"}>
+            <IconButton
+              aria-label="Toggle animations"
+              icon={<FaCog />}
+              size="sm"
+              onClick={toggleAnimation}
+              colorScheme={animationEnabled ? "blue" : "gray"}
+              opacity="0.7"
+              _hover={{ opacity: 1 }}
+            />
+          </Tooltip>
+        </HStack>
       </Box>
 
       <CytoscapeComponent
-        elements={CytoscapeComponent.normalizeElements(elements)}
+        elements={CytoscapeComponent.normalizeElements(currentElements)}
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
         layout={layoutConfig}

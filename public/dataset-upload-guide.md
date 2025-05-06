@@ -86,6 +86,9 @@ A sample dataset is available at `/sample-dataset.json` that you can download an
 - Uploading a dataset will **replace all existing data** in the Neo4j database
 - Ensure all `uid` values are unique across nodes
 - The `properties` field must contain valid JSON objects
+- **Timestamps are automatically assigned** to nodes and relationships if not provided
+- All uploaded data will be assigned timestamps within the default time range (Dec 30-31, 2023)
+- After uploading, the graph visualization will show the data when the time slider is set to this range
 - Large datasets may require additional processing time
 - The Neo4j database must have the APOC plugin installed for proper relationship creation
 

@@ -68,13 +68,18 @@ const DatasetUploader: React.FC = () => {
 
         toast({
           title: "Upload Successful",
-          description: "Dataset has been uploaded and processed.",
+          description: "Dataset has been uploaded and processed with timestamps in the default time range.",
           status: "success",
           duration: 5000,
           isClosable: true,
         });
         setSelectedFile(null); // Clear selection after successful upload
-        // Optionally trigger a refresh of graph data here
+
+        // Refresh the page to update the graph visualization with the new data
+        // This ensures the TimeSlider and GraphVisualization components are reinitialized
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
 
       } catch (error: any) {
         console.error("Upload error:", error);

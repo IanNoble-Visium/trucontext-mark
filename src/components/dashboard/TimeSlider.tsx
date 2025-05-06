@@ -34,7 +34,8 @@ import {
   FaStepForward,
   FaStepBackward,
   FaCog,
-  FaCalendarAlt
+  FaCalendarAlt,
+  FaBolt
 } from 'react-icons/fa'; // Assuming react-icons is installed
 
 interface TimeSliderProps {
@@ -49,7 +50,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
   // which may be incorrect (as seen in the error with 2025 dates)
   const safePastDate = new Date('2023-01-01T00:00:00.000Z').getTime();
   const safeRecentDate = new Date('2023-12-31T23:59:59.999Z').getTime();
-  
+
   // Initialize constants first - using safe dates to avoid future date issues
   const now = Math.min(Date.now(), safeRecentDate);
   const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000; // One year ago
@@ -63,6 +64,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [animationInterval, setAnimationInterval] = useState<TimeoutType | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [transitionSpeed, setTransitionSpeed] = useState<number>(500); // Transition speed in ms
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [showCustomDatePicker, setShowCustomDatePicker] = useState<boolean>(false);
@@ -177,7 +179,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
         setMinTimestamp(safeStartTime);
         setMaxTimestamp(safeCurrentTime);
         setCurrentTimeRange([safeStartTime, safeCurrentTime]);
-        
+
         // Make sure we're passing real values, not zeros
         if (safeStartTime > 0 && safeCurrentTime > 0) {
           updateTimeRange(safeStartTime, safeCurrentTime, true);
@@ -287,7 +289,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     // Get current time with safe upper bound
     const maxAllowedTime = new Date('2024-01-01T00:00:00.000Z').getTime();
     const currentTime = Math.min(Date.now(), maxAllowedTime);
-    
+
     const safeMinTimestamp = Math.min(minTimestamp, currentTime);
     const safeMaxTimestamp = Math.min(maxTimestamp, currentTime);
 
@@ -347,29 +349,13 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     // Set a safe initial range before fetching to prevent 0,0 from being sent
     const safeStart = new Date('2023-12-30T00:00:00.000Z').getTime();
     const safeEnd = new Date('2023-12-31T23:59:59.999Z').getTime();
-    
+
     if (safeStart > 0 && safeEnd > 0) {
       setCurrentTimeRange([safeStart, safeEnd]);
     }
-    
+
     fetchTimeRange();
   }, [fetchTimeRange]);
-
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (animationInterval) {
-        clearInterval(animationInterval);
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [animationInterval]);
-
-  if (isLoading) {
-    return <Box p={4} borderWidth="1px" borderRadius="lg"><Spinner size="md" /></Box>;
-  }
 
   // Function to handle custom date selection
   const handleCustomDateApply = useCallback(() => {
@@ -414,6 +400,24 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     }
   }, [customStartDate, customEndDate, debouncedUpdateTimeRange, toast]);
 
+  // Function to update transition speed
+  const handleTransitionSpeedChange = useCallback((speed: number) => {
+    setTransitionSpeed(speed);
+
+    // Notify the user about the change
+    toast({
+      title: `Transition Speed: ${speed}ms`,
+      description: speed <= 200 ? "Fast transitions" : speed >= 1000 ? "Slow, smooth transitions" : "Balanced transitions",
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+
+    // Dispatch a custom event that GraphVisualization can listen for
+    const event = new CustomEvent('transitionspeedchange', { detail: { speed } });
+    window.dispatchEvent(event);
+  }, [toast]);
+
   // Function to step forward/backward in time
   const stepTimeRange = useCallback((direction: 'forward' | 'backward') => {
     // Access currentTimeRange directly from state to avoid closure issues
@@ -445,6 +449,22 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
       }
     }
   }, [currentTimeRange, minTimestamp, maxTimestamp, debouncedUpdateTimeRange]);
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (animationInterval) {
+        clearInterval(animationInterval);
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [animationInterval]);
+
+  if (isLoading) {
+    return <Box p={4} borderWidth="1px" borderRadius="lg"><Spinner size="md" /></Box>;
+  }
 
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg">
@@ -498,6 +518,32 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
               <option value={2}>2x</option>
               <option value={4}>4x</option>
             </Select>
+
+            {/* Transition speed control */}
+            <Tooltip label="Transition Speed">
+              <Box display="inline-flex" alignItems="center">
+                <IconButton
+                  aria-label="Transition speed"
+                  icon={<FaBolt />}
+                  size="xs"
+                  colorScheme="teal"
+                  mr={1}
+                />
+                <Select
+                  size="xs"
+                  width="110px"
+                  value={transitionSpeed}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                    handleTransitionSpeedChange(parseInt(e.target.value))
+                  }
+                >
+                  <option value={200}>Fast (200ms)</option>
+                  <option value={500}>Medium (500ms)</option>
+                  <option value={1000}>Slow (1s)</option>
+                  <option value={2000}>Very Slow (2s)</option>
+                </Select>
+              </Box>
+            </Tooltip>
 
             {/* Custom date picker */}
             <Popover

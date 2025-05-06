@@ -1,0 +1,644 @@
+{
+  "nodes": [
+    {
+      "uid": "1",
+      "type": "Character",
+      "showname": "Luke Skywalker",
+      "properties": {
+        "name": "Luke Skywalker",
+        "species": "Human",
+        "affiliation": "Sith",
+        "homeworld": "Alderaan",
+        "forceUser": true,
+        "powerLevel": 56
+      }
+    },
+    {
+      "uid": "2",
+      "type": "Character",
+      "showname": "Darth Vader",
+      "properties": {
+        "name": "Darth Vader",
+        "species": "Unknown",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Coruscant",
+        "forceUser": false,
+        "powerLevel": 89
+      }
+    },
+    {
+      "uid": "3",
+      "type": "Character",
+      "showname": "Princess Leia",
+      "properties": {
+        "name": "Princess Leia",
+        "species": "Droid",
+        "affiliation": "Galactic Empire",
+        "homeworld": "Coruscant",
+        "forceUser": false,
+        "powerLevel": 38
+      }
+    },
+    {
+      "uid": "4",
+      "type": "Character",
+      "showname": "Han Solo",
+      "properties": {
+        "name": "Han Solo",
+        "species": "Droid",
+        "affiliation": "Sith",
+        "homeworld": "Coruscant",
+        "forceUser": true,
+        "powerLevel": 45
+      }
+    },
+    {
+      "uid": "5",
+      "type": "Character",
+      "showname": "Chewbacca",
+      "properties": {
+        "name": "Chewbacca",
+        "species": "Human",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Coruscant",
+        "forceUser": false,
+        "powerLevel": 83
+      }
+    },
+    {
+      "uid": "6",
+      "type": "Character",
+      "showname": "Obi-Wan Kenobi",
+      "properties": {
+        "name": "Obi-Wan Kenobi",
+        "species": "Droid",
+        "affiliation": "Jedi Order",
+        "homeworld": "Endor",
+        "forceUser": true,
+        "powerLevel": 30
+      }
+    },
+    {
+      "uid": "7",
+      "type": "Character",
+      "showname": "Yoda",
+      "properties": {
+        "name": "Yoda",
+        "species": "Human",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Alderaan",
+        "forceUser": false,
+        "powerLevel": 43
+      }
+    },
+    {
+      "uid": "8",
+      "type": "Character",
+      "showname": "R2-D2",
+      "properties": {
+        "name": "R2-D2",
+        "species": "Wookiee",
+        "affiliation": "Jedi Order",
+        "homeworld": "Dagobah",
+        "forceUser": false,
+        "powerLevel": 11
+      }
+    },
+    {
+      "uid": "9",
+      "type": "Character",
+      "showname": "C-3PO",
+      "properties": {
+        "name": "C-3PO",
+        "species": "Human",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Alderaan",
+        "forceUser": false,
+        "powerLevel": 75
+      }
+    },
+    {
+      "uid": "10",
+      "type": "Character",
+      "showname": "Emperor Palpatine",
+      "properties": {
+        "name": "Emperor Palpatine",
+        "species": "Droid",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Tatooine",
+        "forceUser": false,
+        "powerLevel": 90
+      }
+    },
+    {
+      "uid": "11",
+      "type": "Character",
+      "showname": "Character_11",
+      "properties": {
+        "name": "Character_11",
+        "species": "Droid",
+        "affiliation": "Galactic Empire",
+        "homeworld": "Coruscant",
+        "forceUser": true,
+        "powerLevel": 48
+      }
+    },
+    {
+      "uid": "12",
+      "type": "Character",
+      "showname": "Character_12",
+      "properties": {
+        "name": "Character_12",
+        "species": "Wookiee",
+        "affiliation": "Jedi Order",
+        "homeworld": "Endor",
+        "forceUser": false,
+        "powerLevel": 63
+      }
+    },
+    {
+      "uid": "13",
+      "type": "Character",
+      "showname": "Character_13",
+      "properties": {
+        "name": "Character_13",
+        "species": "Droid",
+        "affiliation": "Sith",
+        "homeworld": "Tatooine",
+        "forceUser": false,
+        "powerLevel": 69
+      }
+    },
+    {
+      "uid": "14",
+      "type": "Character",
+      "showname": "Character_14",
+      "properties": {
+        "name": "Character_14",
+        "species": "Human",
+        "affiliation": "Jedi Order",
+        "homeworld": "Coruscant",
+        "forceUser": false,
+        "powerLevel": 8
+      }
+    },
+    {
+      "uid": "15",
+      "type": "Character",
+      "showname": "Character_15",
+      "properties": {
+        "name": "Character_15",
+        "species": "Human",
+        "affiliation": "Sith",
+        "homeworld": "Hoth",
+        "forceUser": false,
+        "powerLevel": 76
+      }
+    },
+    {
+      "uid": "16",
+      "type": "Character",
+      "showname": "Character_16",
+      "properties": {
+        "name": "Character_16",
+        "species": "Wookiee",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Dagobah",
+        "forceUser": false,
+        "powerLevel": 90
+      }
+    },
+    {
+      "uid": "17",
+      "type": "Character",
+      "showname": "Character_17",
+      "properties": {
+        "name": "Character_17",
+        "species": "Wookiee",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Alderaan",
+        "forceUser": false,
+        "powerLevel": 8
+      }
+    },
+    {
+      "uid": "18",
+      "type": "Character",
+      "showname": "Character_18",
+      "properties": {
+        "name": "Character_18",
+        "species": "Wookiee",
+        "affiliation": "Rebel Alliance",
+        "homeworld": "Coruscant",
+        "forceUser": false,
+        "powerLevel": 9
+      }
+    },
+    {
+      "uid": "19",
+      "type": "Character",
+      "showname": "Character_19",
+      "properties": {
+        "name": "Character_19",
+        "species": "Wookiee",
+        "affiliation": "Galactic Empire",
+        "homeworld": "Endor",
+        "forceUser": false,
+        "powerLevel": 37
+      }
+    },
+    {
+      "uid": "20",
+      "type": "Character",
+      "showname": "Character_20",
+      "properties": {
+        "name": "Character_20",
+        "species": "Wookiee",
+        "affiliation": "Sith",
+        "homeworld": "Alderaan",
+        "forceUser": true,
+        "powerLevel": 96
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "1",
+      "to": "14",
+      "type": "EnemyOf",
+      "properties": {
+        "strength": 63
+      }
+    },
+    {
+      "from": "1",
+      "to": "2",
+      "type": "BattledWith",
+      "properties": {
+        "outcome": "Victory",
+        "location": "Hoth"
+      }
+    },
+    {
+      "from": "1",
+      "to": "6",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 6",
+        "strength": 47
+      }
+    },
+    {
+      "from": "2",
+      "to": "7",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 1",
+        "strength": 8
+      }
+    },
+    {
+      "from": "2",
+      "to": "11",
+      "type": "LocatedOn",
+      "properties": {
+        "strength": 10
+      }
+    },
+    {
+      "from": "3",
+      "to": "13",
+      "type": "EnemyOf",
+      "properties": {
+        "strength": 100
+      }
+    },
+    {
+      "from": "3",
+      "to": "1",
+      "type": "RelativeTo",
+      "properties": {
+        "strength": 48
+      }
+    },
+    {
+      "from": "3",
+      "to": "5",
+      "type": "CommandsUnit",
+      "properties": {
+        "strength": 98
+      }
+    },
+    {
+      "from": "4",
+      "to": "1",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 3",
+        "strength": 44
+      }
+    },
+    {
+      "from": "4",
+      "to": "3",
+      "type": "CommandsUnit",
+      "properties": {
+        "strength": 98
+      }
+    },
+    {
+      "from": "5",
+      "to": "15",
+      "type": "RelativeTo",
+      "properties": {
+        "strength": 62
+      }
+    },
+    {
+      "from": "5",
+      "to": "10",
+      "type": "EnemyOf",
+      "properties": {
+        "strength": 66
+      }
+    },
+    {
+      "from": "5",
+      "to": "19",
+      "type": "EnemyOf",
+      "properties": {
+        "strength": 78
+      }
+    },
+    {
+      "from": "6",
+      "to": "11",
+      "type": "MentorOf",
+      "properties": {
+        "strength": 37
+      }
+    },
+    {
+      "from": "6",
+      "to": "10",
+      "type": "RelativeTo",
+      "properties": {
+        "strength": 37
+      }
+    },
+    {
+      "from": "7",
+      "to": "15",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 1",
+        "strength": 90
+      }
+    },
+    {
+      "from": "8",
+      "to": "17",
+      "type": "EnemyOf",
+      "properties": {
+        "strength": 77
+      }
+    },
+    {
+      "from": "8",
+      "to": "5",
+      "type": "MentorOf",
+      "properties": {
+        "strength": 5
+      }
+    },
+    {
+      "from": "9",
+      "to": "4",
+      "type": "EnemyOf",
+      "properties": {
+        "strength": 55
+      }
+    },
+    {
+      "from": "9",
+      "to": "13",
+      "type": "BattledWith",
+      "properties": {
+        "outcome": "Defeat",
+        "location": "Endor"
+      }
+    },
+    {
+      "from": "10",
+      "to": "15",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 2",
+        "strength": 59
+      }
+    },
+    {
+      "from": "11",
+      "to": "17",
+      "type": "MentorOf",
+      "properties": {
+        "strength": 38
+      }
+    },
+    {
+      "from": "11",
+      "to": "20",
+      "type": "BattledWith",
+      "properties": {
+        "outcome": "Defeat",
+        "location": "Hoth"
+      }
+    },
+    {
+      "from": "11",
+      "to": "7",
+      "type": "CommandsUnit",
+      "properties": {
+        "strength": 50
+      }
+    },
+    {
+      "from": "12",
+      "to": "5",
+      "type": "MentorOf",
+      "properties": {
+        "strength": 45
+      }
+    },
+    {
+      "from": "13",
+      "to": "12",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 3",
+        "strength": 43
+      }
+    },
+    {
+      "from": "13",
+      "to": "6",
+      "type": "LocatedOn",
+      "properties": {
+        "strength": 86
+      }
+    },
+    {
+      "from": "13",
+      "to": "10",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 4",
+        "strength": 14
+      }
+    },
+    {
+      "from": "14",
+      "to": "4",
+      "type": "MentorOf",
+      "properties": {
+        "strength": 47
+      }
+    },
+    {
+      "from": "14",
+      "to": "3",
+      "type": "TrainedBy",
+      "properties": {
+        "duration": "10 years",
+        "completed": true
+      }
+    },
+    {
+      "from": "15",
+      "to": "16",
+      "type": "FriendsWith",
+      "properties": {
+        "since": "Episode 3",
+        "strength": 55
+      }
+    },
+    {
+      "from": "16",
+      "to": "20",
+      "type": "LocatedOn",
+      "properties": {
+        "strength": 66
+      }
+    },
+    {
+      "from": "16",
+      "to": "12",
+      "type": "TrainedBy",
+      "properties": {
+        "duration": "1 years",
+        "completed": true
+      }
+    },
+    {
+      "from": "16",
+      "to": "10",
+      "type": "CommandsUnit",
+      "properties": {
+        "strength": 90
+      }
+    },
+    {
+      "from": "17",
+      "to": "16",
+      "type": "BattledWith",
+      "properties": {
+        "outcome": "Defeat",
+        "location": "Dagobah"
+      }
+    },
+    {
+      "from": "17",
+      "to": "4",
+      "type": "MentorOf",
+      "properties": {
+        "strength": 95
+      }
+    },
+    {
+      "from": "18",
+      "to": "14",
+      "type": "LocatedOn",
+      "properties": {
+        "strength": 40
+      }
+    },
+    {
+      "from": "18",
+      "to": "3",
+      "type": "CommandsUnit",
+      "properties": {
+        "strength": 69
+      }
+    },
+    {
+      "from": "18",
+      "to": "6",
+      "type": "RelativeTo",
+      "properties": {
+        "strength": 10
+      }
+    },
+    {
+      "from": "19",
+      "to": "10",
+      "type": "MentorOf",
+      "properties": {
+        "strength": 2
+      }
+    },
+    {
+      "from": "19",
+      "to": "20",
+      "type": "LocatedOn",
+      "properties": {
+        "strength": 19
+      }
+    },
+    {
+      "from": "20",
+      "to": "1",
+      "type": "TrainedBy",
+      "properties": {
+        "duration": "9 years",
+        "completed": true
+      }
+    }
+  ],
+  "storedQueries": [
+    {
+      "query": "MATCH (n:Character)-[r]->(m:Character) RETURN n,r,m",
+      "lang": "cypher",
+      "description": "Find all character relationships"
+    },
+    {
+      "query": "MATCH (n:Character) WHERE n.forceUser = true RETURN n",
+      "lang": "cypher",
+      "description": "Find all Force users"
+    },
+    {
+      "query": "MATCH (n:Character)-[r:BattledWith]->(m:Character) WHERE r.outcome = 'Victory' RETURN n,r,m",
+      "lang": "cypher",
+      "description": "Find all victorious battles"
+    },
+    {
+      "query": "MATCH (n:Character) WHERE n.affiliation = 'Rebel Alliance' RETURN n",
+      "lang": "cypher",
+      "description": "Find all Rebel Alliance members"
+    },
+    {
+      "query": "MATCH (n:Character)-[r:TrainedBy]->(m:Character) WHERE r.completed = true RETURN n,r,m",
+      "lang": "cypher",
+      "description": "Find completed training relationships"
+    }
+  ]
+}
