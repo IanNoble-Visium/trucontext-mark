@@ -74,9 +74,9 @@ This is a Next.js application designed to visualize cyber threat intelligence da
 Create a `.env.local` file in the root of the project directory and add your Neo4j connection details:
 
 ```
-NEO4J_URI=neo4j+s://589b8857.databases.neo4j.io
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=-QpnjSMtvbvkNYf4dpJcOLqc-J41Rn22ggBDSSp5tUD4
+NEO4J_URI=neo4j+s://your-neo4j-uri.databases.neo4j.io
+NEO4J_USERNAME=your_username_here
+NEO4J_PASSWORD=your-password
 ```
 
 Replace the placeholder values with your actual Neo4j AuraDB URI, username, and password.
