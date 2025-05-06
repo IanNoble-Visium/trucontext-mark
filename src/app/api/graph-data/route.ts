@@ -88,7 +88,18 @@ export async function GET(request: NextRequest) {
           maxTimestamp = now;
       }
 
-      console.log(`Timestamp range: ${minTimestamp} - ${maxTimestamp}`);
+      // Ensure we don't return future dates
+      const currentTime = Date.now();
+      if (minTimestamp > currentTime) {
+          console.log('Correcting future minTimestamp to current time - 48h');
+          minTimestamp = currentTime - 48 * 60 * 60 * 1000;
+      }
+      if (maxTimestamp > currentTime) {
+          console.log('Correcting future maxTimestamp to current time');
+          maxTimestamp = currentTime;
+      }
+
+      console.log(`Timestamp range: ${new Date(minTimestamp).toISOString()} - ${new Date(maxTimestamp).toISOString()}`);
       return NextResponse.json({ minTimestamp, maxTimestamp });
     }
 
@@ -99,6 +110,17 @@ export async function GET(request: NextRequest) {
     // Validate timestamps
     if ((startTime !== null && isNaN(startTime)) || (endTime !== null && isNaN(endTime)) || (startTime !== null && endTime !== null && startTime >= endTime)) {
         return NextResponse.json({ error: 'Invalid time range parameters' }, { status: 400 });
+    }
+
+    // Ensure we don't use future dates
+    const currentTime = Date.now();
+    if (startTime !== null && startTime > currentTime) {
+        console.log(`Correcting future startTime from ${new Date(startTime).toISOString()} to current time - 24h`);
+        startTime = currentTime - 24 * 60 * 60 * 1000;
+    }
+    if (endTime !== null && endTime > currentTime) {
+        console.log(`Correcting future endTime from ${new Date(endTime).toISOString()} to current time`);
+        endTime = currentTime;
     }
 
     // Convert JS milliseconds timestamps to ISO strings for Cypher comparison if timestamps are stored as strings
