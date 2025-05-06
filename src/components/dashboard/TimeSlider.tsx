@@ -18,20 +18,34 @@ import { FaPlay, FaPause } from 'react-icons/fa'; // Assuming react-icons is ins
 
 interface TimeSliderProps {
   onTimeRangeChange: (startTime: number, endTime: number) => void;
-  // Potentially add props for initial range, step, etc.
+  initialStartTime?: number; // Optional prop for initial start time
+  initialEndTime?: number; // Optional prop for initial end time
 }
 
-const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
+const TimeSlider: React.FC<TimeSliderProps> = ({
+  onTimeRangeChange,
+  initialStartTime,
+  initialEndTime
+}) => {
   // Initialize with default values that won't trigger immediate API calls
   // Use past dates to avoid querying future dates which won't have data
   const now = Date.now();
   const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000; // One year ago
   const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000; // One month ago
 
+  // Ensure we're not using future dates
+  const ensurePastDate = (timestamp: number): number => {
+    return timestamp > now ? now : timestamp;
+  };
+
+  // Use props if provided, otherwise use defaults
+  const safeStartTime = initialStartTime ? ensurePastDate(initialStartTime) : oneMonthAgo;
+  const safeEndTime = initialEndTime ? ensurePastDate(initialEndTime) : now;
+
   // Use a wider default range to increase chances of finding data
   const [minTimestamp, setMinTimestamp] = useState<number>(oneYearAgo);
   const [maxTimestamp, setMaxTimestamp] = useState<number>(now);
-  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([oneMonthAgo, now]);
+  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([safeStartTime, safeEndTime]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [animationInterval, setAnimationInterval] = useState<NodeJS.Timeout | null>(null);
@@ -50,31 +64,55 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
       const data = await response.json();
 
       // Assuming API returns { minTimestamp: number, maxTimestamp: number } in milliseconds
-      const minTs = data.minTimestamp || Date.now() - 48 * 60 * 60 * 1000; // Default to 48 hours ago
-      const maxTs = data.maxTimestamp || Date.now(); // Default to now
+      const currentTime = Date.now();
+
+      // Ensure we don't use future dates
+      let minTs = data.minTimestamp || currentTime - 48 * 60 * 60 * 1000; // Default to 48 hours ago
+      let maxTs = data.maxTimestamp || currentTime; // Default to now
+
+      // Cap at current time to avoid future dates
+      if (minTs > currentTime) minTs = currentTime - 48 * 60 * 60 * 1000;
+      if (maxTs > currentTime) maxTs = currentTime;
+
+      console.log(`TimeSlider: Received time range from API: ${new Date(minTs).toISOString()} - ${new Date(maxTs).toISOString()}`);
 
       if (minTs >= maxTs) {
          // Handle case with no data or single timestamp
-         setMinTimestamp(maxTs - 48 * 60 * 60 * 1000);
+         const safeStart = maxTs - 48 * 60 * 60 * 1000;
+         setMinTimestamp(safeStart);
          setMaxTimestamp(maxTs);
-         setCurrentTimeRange([maxTs - 48 * 60 * 60 * 1000, maxTs]);
-         onTimeRangeChange(maxTs - 48 * 60 * 60 * 1000, maxTs);
+         setCurrentTimeRange([safeStart, maxTs]);
+         onTimeRangeChange(safeStart, maxTs);
+         console.log(`TimeSlider: Using default range due to invalid data: ${new Date(safeStart).toISOString()} - ${new Date(maxTs).toISOString()}`);
       } else {
         setMinTimestamp(minTs);
         setMaxTimestamp(maxTs);
-        setCurrentTimeRange([minTs, maxTs]);
-        onTimeRangeChange(minTs, maxTs); // Initial full range
+
+        // Use initial values from props if available, otherwise use API values
+        const initialStart = safeStartTime > minTs && safeStartTime < maxTs ? safeStartTime : minTs;
+        const initialEnd = safeEndTime > minTs && safeEndTime < maxTs ? safeEndTime : maxTs;
+
+        setCurrentTimeRange([initialStart, initialEnd]);
+        onTimeRangeChange(initialStart, initialEnd);
+        console.log(`TimeSlider: Using time range: ${new Date(initialStart).toISOString()} - ${new Date(initialEnd).toISOString()}`);
       }
 
     } catch (error: any) {
       console.error("Failed to fetch time range:", error);
-      // Use default range on error
-      const now = Date.now();
-      const fortyEightHoursAgo = now - 48 * 60 * 60 * 1000;
-      setMinTimestamp(fortyEightHoursAgo);
-      setMaxTimestamp(now);
-      setCurrentTimeRange([fortyEightHoursAgo, now]);
-      onTimeRangeChange(fortyEightHoursAgo, now);
+      // Use default range on error - ensure we use past dates
+      const currentTime = Date.now();
+      const oneMonthAgo = currentTime - 30 * 24 * 60 * 60 * 1000;
+
+      setMinTimestamp(oneYearAgo); // Use the oneYearAgo variable defined at the top
+      setMaxTimestamp(currentTime);
+
+      // Use initial values from props if available, otherwise use defaults
+      const errorStart = initialStartTime && initialStartTime < currentTime ? initialStartTime : oneMonthAgo;
+      const errorEnd = initialEndTime && initialEndTime < currentTime ? initialEndTime : currentTime;
+
+      setCurrentTimeRange([errorStart, errorEnd]);
+      onTimeRangeChange(errorStart, errorEnd);
+      console.log(`TimeSlider: Using fallback range due to error: ${new Date(errorStart).toISOString()} - ${new Date(errorEnd).toISOString()}`);
       toast({
         title: 'Error Fetching Time Range',
         description: error.message || 'Could not load time boundaries.',
@@ -117,11 +155,22 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
 
   // Handle slider changes
   const handleSliderChange = (val: [number, number]) => {
+    const currentTime = Date.now();
+
+    // Ensure we don't use future dates
+    let start = val[0];
+    let end = val[1];
+
+    // Cap at current time to avoid future dates
+    if (start > currentTime) start = currentTime - 24 * 60 * 60 * 1000;
+    if (end > currentTime) end = currentTime;
+
     // Only update if the values are valid
-    if (val[0] > 0 && val[1] > 0 && val[0] < val[1]) {
-      setCurrentTimeRange(val);
+    if (start > 0 && end > 0 && start < end) {
+      setCurrentTimeRange([start, end]);
       // Use debounced function to prevent too many API calls
-      debouncedTimeRangeChange(val[0], val[1]);
+      debouncedTimeRangeChange(start, end);
+      console.log(`TimeSlider: Slider changed to ${new Date(start).toISOString()} - ${new Date(end).toISOString()}`);
     } else {
       console.log('TimeSlider: Ignoring invalid slider values');
     }
@@ -133,40 +182,50 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }) => {
     return new Date(timestamp).toLocaleString();
   };
 
-  // --- Animation Logic (Improved with better throttling) ---
+  // --- Animation Logic (Improved with better throttling and future date prevention) ---
   const startAnimation = () => {
     if (isLoading || minTimestamp === maxTimestamp) return;
     setIsPlaying(true);
 
+    const currentTime = Date.now();
+
+    // Ensure we're not using future dates
+    const safeMinTimestamp = minTimestamp > currentTime ? currentTime - 30 * 24 * 60 * 60 * 1000 : minTimestamp;
+    const safeMaxTimestamp = maxTimestamp > currentTime ? currentTime : maxTimestamp;
+
     // Start animation from the beginning of the current range
-    let currentEndTime = currentTimeRange[0];
+    let currentEndTime = safeMinTimestamp;
 
     // Reduce the number of steps and increase the interval for less frequent updates
-    const step = (maxTimestamp - minTimestamp) / 50;
+    const step = (safeMaxTimestamp - safeMinTimestamp) / 20; // Reduced to 20 steps for even less frequent updates
     let lastUpdateTime = 0;
+
+    console.log(`TimeSlider: Starting animation from ${new Date(safeMinTimestamp).toISOString()} to ${new Date(safeMaxTimestamp).toISOString()}`);
 
     const interval = setInterval(() => {
       const now = Date.now();
 
-      // Only update if at least 500ms have passed since the last update
-      if (now - lastUpdateTime < 500 && lastUpdateTime > 0) {
+      // Only update if at least 1000ms have passed since the last update
+      if (now - lastUpdateTime < 1000 && lastUpdateTime > 0) {
         return;
       }
 
       lastUpdateTime = now;
       currentEndTime += step;
 
-      if (currentEndTime >= maxTimestamp) {
-        currentEndTime = maxTimestamp;
+      if (currentEndTime >= safeMaxTimestamp) {
+        currentEndTime = safeMaxTimestamp;
         stopAnimation(); // Stop when reaching the end
+        return;
       }
 
       // Update slider to show progress up to currentEndTime
-      setCurrentTimeRange([minTimestamp, currentEndTime]);
+      setCurrentTimeRange([safeMinTimestamp, currentEndTime]);
 
       // Use debounced function to prevent too many API calls during animation
-      debouncedTimeRangeChange(minTimestamp, currentEndTime);
-    }, 500); // Increased to 500ms for less frequent updates
+      debouncedTimeRangeChange(safeMinTimestamp, currentEndTime);
+      console.log(`TimeSlider: Animation step to ${new Date(currentEndTime).toISOString()}`);
+    }, 1000); // Increased to 1000ms (1 second) for even less frequent updates
 
     setAnimationInterval(interval);
   };

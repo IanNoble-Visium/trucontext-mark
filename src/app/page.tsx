@@ -10,12 +10,13 @@ import DatasetUploader from "@/components/dashboard/DatasetUploader"; // Dataset
 import TimeSlider from "@/components/dashboard/TimeSlider"; // Import the TimeSlider component
 
 export default function Home() {
-  // Initialize with default time range values
+  // Initialize with default time range values - use past dates only
   const now = Date.now();
-  const fortyEightHoursAgo = now - 48 * 60 * 60 * 1000;
+  const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000; // One year ago
+  const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000; // One month ago
 
-  // State to hold the time range from the slider
-  const [startTime, setStartTime] = useState<number>(fortyEightHoursAgo);
+  // State to hold the time range from the slider - use past dates to avoid future date issues
+  const [startTime, setStartTime] = useState<number>(oneMonthAgo);
   const [endTime, setEndTime] = useState<number>(now);
 
   // Callback function for the TimeSlider to update the time range
@@ -55,7 +56,11 @@ export default function Home() {
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Timeline View</Heading>
           <Text mb={4} color="gray.500">Filter the graph visualization based on the selected time range.</Text>
-          <TimeSlider onTimeRangeChange={handleTimeRangeChange} />
+          <TimeSlider
+            onTimeRangeChange={handleTimeRangeChange}
+            initialStartTime={startTime}
+            initialEndTime={endTime}
+          />
         </Box>
 
         <Divider />
