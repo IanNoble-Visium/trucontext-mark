@@ -1,13 +1,25 @@
 "use client";
 
+import { useState } from "react";
 import { Box, Heading, Text, VStack, Divider } from "@chakra-ui/react";
 import GraphVisualization from "@/components/graph/GraphVisualization"; // Adjust path if needed
 import KpiSummary from "@/components/dashboard/KpiSummary"; // Adjust path if needed
 import AlertsList from "@/components/dashboard/AlertsList"; // Adjust path if needed
 import RiskList from "@/components/dashboard/RiskList"; // Adjust path if needed
 import DatasetUploader from "@/components/dashboard/DatasetUploader"; // Dataset uploader component
+import TimeSlider from "@/components/dashboard/TimeSlider"; // Import the TimeSlider component
 
 export default function Home() {
+  // State to hold the time range from the slider
+  const [startTime, setStartTime] = useState<number>(0);
+  const [endTime, setEndTime] = useState<number>(0);
+
+  // Callback function for the TimeSlider to update the time range
+  const handleTimeRangeChange = (start: number, end: number) => {
+    setStartTime(start);
+    setEndTime(end);
+  };
+
   return (
     <Box p={5}>
       <VStack spacing={6} align="stretch">
@@ -35,11 +47,21 @@ export default function Home() {
 
         <Divider />
 
-        {/* Graph Visualization */}
+        {/* Timeline View / Time Slider */}
+        <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
+          <Heading size="md" mb={3}>Timeline View</Heading>
+          <Text mb={4} color="gray.500">Filter the graph visualization based on the selected time range.</Text>
+          <TimeSlider onTimeRangeChange={handleTimeRangeChange} />
+        </Box>
+
+        <Divider />
+
+        {/* Graph Visualization - Pass time range state */}
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Interactive Graph Visualization</Heading>
-          <Text mb={4} color="gray.500">Explore connections and entities within the cyber graph. Click and drag nodes, zoom, and pan.</Text>
-          <GraphVisualization />
+          <Text mb={4} color="gray.500">Explore connections and entities within the selected time range. Click and drag nodes, zoom, and pan.</Text>
+          {/* Pass startTime and endTime to GraphVisualization */}
+          <GraphVisualization startTime={startTime} endTime={endTime} />
         </Box>
 
         <Divider />
@@ -54,13 +76,6 @@ export default function Home() {
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Risk Prioritization</Heading>
           <RiskList />
-        </Box>
-
-        {/* Timeline View */}
-        <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
-          <Heading size="md" mb={3}>Timeline View</Heading>
-          <Text color="gray.500">Visualize graph changes over time. (Timeline component to be implemented)</Text>
-          {/* Placeholder for Timeline slider/component */}
         </Box>
 
       </VStack>

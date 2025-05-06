@@ -1,93 +1,101 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
-import { Box, Spinner, Text, useToast, Tooltip } from '@chakra-ui/react';
+import { Box, Spinner, Text, useToast } from '@chakra-ui/react';
 import cytoscape from 'cytoscape'; // Import core cytoscape
 
 // Define the structure of the elements expected by Cytoscape
 interface CytoscapeElement {
-  data: { id: string; label?: string; type?: string; riskLevel?: 'High' | 'Medium' | 'Low'; [key: string]: any };
+  data: { id: string; label?: string; type?: string; riskLevel?: 'High' | 'Medium' | 'Low'; timestamp?: number; [key: string]: any };
   group: 'nodes' | 'edges';
 }
 
-const GraphVisualization: React.FC = () => {
+interface GraphVisualizationProps {
+  startTime: number; // Timestamp in milliseconds
+  endTime: number;   // Timestamp in milliseconds
+}
+
+const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime }) => {
   const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]); // Use ElementDefinition[]
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const cyRef = useRef<cytoscape.Core | null>(null); // Ref to store cytoscape instance
   const toast = useToast();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        // Add a small delay to ensure the API is ready
-        await new Promise(resolve => setTimeout(resolve, 500));
+  // Memoize fetchData to prevent unnecessary refetches if props haven't changed
+  const fetchData = useCallback(async (start: number, end: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Construct URL with time range parameters
+      const url = `/api/graph-data?startTime=${start}&endTime=${end}`;
+      const response = await fetch(url);
 
-        const response = await fetch('/api/graph-data');
-
-        // Handle non-OK responses
-        if (!response.ok) {
-          let errorMessage = `HTTP error! status: ${response.status}`;
-          try {
-            const errorData = await response.json();
-            if (errorData.details) {
-              errorMessage = errorData.details;
-            }
-          } catch (jsonError) {
-            console.warn("Could not parse error response as JSON:", jsonError);
-          }
-          throw new Error(errorMessage);
-        }
-
-        // Parse the JSON response
-        let data;
+      // Handle non-OK responses
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`;
         try {
-          data = await response.json();
+          const errorData = await response.json();
+          if (errorData.details) {
+            errorMessage = errorData.details;
+          }
         } catch (jsonError) {
-          throw new Error(`Failed to parse response as JSON: ${jsonError.message}`);
+          console.warn("Could not parse error response as JSON:", jsonError);
         }
-
-        console.log("Fetched graph data:", data.elements?.length ?? 0, "elements");
-
-        // Ensure data.elements is an array before setting state
-        if (!data.elements) {
-          console.warn("Response did not contain elements array:", data);
-          setElements([]);
-        } else if (!Array.isArray(data.elements)) {
-          console.warn("Elements is not an array:", data.elements);
-          setElements([]);
-        } else {
-          setElements(data.elements);
-        }
-      } catch (e: any) {
-        console.error("Failed to fetch graph data:", e);
-        const errorMessage = e.message || "An unknown error occurred while fetching graph data.";
-        setError(errorMessage);
-        toast({
-          title: "Error loading graph data",
-          description: errorMessage,
-          status: "error",
-          duration: 9000,
-          isClosable: true,
-        });
-      } finally {
-        setLoading(false);
+        throw new Error(errorMessage);
       }
-    };
 
-    fetchData();
-  }, [toast]);
+      // Parse the JSON response
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError: any) {
+        throw new Error(`Failed to parse response as JSON: ${jsonError.message}`);
+      }
 
-  // Enhanced stylesheet based on potential node/edge properties
+      console.log(`Fetched graph data for ${new Date(start).toISOString()} - ${new Date(end).toISOString()}:`, data.elements?.length ?? 0, "elements");
+
+      // Ensure data.elements is an array before setting state
+      if (!data.elements) {
+        console.warn("Response did not contain elements array:", data);
+        setElements([]);
+      } else if (!Array.isArray(data.elements)) {
+        console.warn("Elements is not an array:", data.elements);
+        setElements([]);
+      } else {
+        setElements(data.elements);
+      }
+    } catch (e: any) {
+      console.error("Failed to fetch graph data:", e);
+      const errorMessage = e.message || "An unknown error occurred while fetching graph data.";
+      setError(errorMessage);
+      toast({
+        title: "Error loading graph data",
+        description: errorMessage,
+        status: "error",
+        duration: 9000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]); // Include toast in dependency array
+
+  // Fetch data when time range props change
+  useEffect(() => {
+    if (startTime > 0 && endTime > 0 && startTime < endTime) {
+        fetchData(startTime, endTime);
+    }
+  }, [startTime, endTime, fetchData]);
+
+  // Enhanced stylesheet (keep as is, filtering happens via data fetching)
   const stylesheet: cytoscape.Stylesheet[] = [
     {
       selector: 'node',
       style: {
-        'background-color': '#666', // Default node color
-        'label': 'data(label)', // Display the 'label' property (e.g., hostname, username)
+        'background-color': '#666',
+        'label': 'data(label)',
         'width': '30px',
         'height': '30px',
         'font-size': '10px',
@@ -100,60 +108,57 @@ const GraphVisualization: React.FC = () => {
         'border-color': '#333'
       }
     },
-    // Style nodes based on 'type' property (example types)
     {
-      selector: 'node[type="Server"]',
+      selector: 'node[type="Server"]
       style: {
-        'background-color': '#3498db', // Blue for servers
+        'background-color': '#3498db',
         'shape': 'rectangle'
       }
     },
     {
-      selector: 'node[type="Workstation"]',
+      selector: 'node[type="Workstation"]
       style: {
-        'background-color': '#2ecc71', // Green for workstations
+        'background-color': '#2ecc71',
         'shape': 'ellipse'
       }
     },
     {
-      selector: 'node[type="User"]',
+      selector: 'node[type="User"]
       style: {
-        'background-color': '#f1c40f', // Yellow for users
+        'background-color': '#f1c40f',
         'shape': 'round-diamond'
       }
     },
     {
-      selector: 'node[type="ThreatActor"]',
+      selector: 'node[type="ThreatActor"]
       style: {
-        'background-color': '#e74c3c', // Red for threat actors
+        'background-color': '#e74c3c',
         'shape': 'triangle',
         'border-width': '2px',
         'border-color': '#c0392b'
       }
     },
-    // Style nodes based on 'riskLevel' property
     {
-      selector: 'node[riskLevel="High"]',
+      selector: 'node[riskLevel="High"]
       style: {
-        'border-color': '#e74c3c', // Red border for high risk
+        'border-color': '#e74c3c',
         'border-width': '3px'
       }
     },
     {
-      selector: 'node[riskLevel="Medium"]',
+      selector: 'node[riskLevel="Medium"]
       style: {
-        'border-color': '#f39c12', // Orange border for medium risk
+        'border-color': '#f39c12',
         'border-width': '3px'
       }
     },
     {
-      selector: 'node[riskLevel="Low"]',
+      selector: 'node[riskLevel="Low"]
       style: {
-        'border-color': '#2ecc71', // Green border for low risk
+        'border-color': '#2ecc71',
         'border-width': '2px'
       }
     },
-    // Style edges
     {
       selector: 'edge',
       style: {
@@ -162,116 +167,113 @@ const GraphVisualization: React.FC = () => {
         'target-arrow-color': '#ccc',
         'target-arrow-shape': 'triangle',
         'curve-style': 'bezier',
-        'label': 'data(label)', // Display relationship type
+        'label': 'data(label)',
         'font-size': '8px',
         'color': '#aaa',
         'text-rotation': 'autorotate'
       }
     },
-    // Example: Style edges representing 'ATTACK' relationships
     {
-        selector: 'edge[label="ATTACK"]',
+        selector: 'edge[label="ATTACK"]
         style: {
-            'line-color': '#e74c3c', // Red line
+            'line-color': '#e74c3c',
             'target-arrow-color': '#e74c3c',
             'width': 2.5
         }
     },
-    // Example: Style edges representing 'DATA_TRANSFER'
     {
-        selector: 'edge[label="DATA_TRANSFER"]',
+        selector: 'edge[label="DATA_TRANSFER"]
         style: {
-            'line-color': '#3498db', // Blue line
+            'line-color': '#3498db',
             'target-arrow-color': '#3498db',
-            'line-style': 'dashed' // Dashed line for data transfer
+            'line-style': 'dashed'
         }
     },
-    // Style for selected nodes/edges
     {
       selector: ':selected',
       style: {
         'border-width': 3,
         'border-color': '#333',
-        'background-blacken': -0.2, // Darken selected node slightly
-        'line-color': '#666', // Darken selected edge
+        'background-blacken': -0.2,
+        'line-color': '#666',
         'target-arrow-color': '#666'
       }
     },
-    // Style for hovered nodes (requires event handling)
     {
         selector: '.hovered',
         style: {
-            'background-color': '#f39c12', // Highlight hovered node
+            'background-color': '#f39c12',
             'border-color': '#d35400',
             'border-width': 3
         }
     }
   ];
 
-  // Layout configuration
+  // Layout configuration (keep as is)
   const layout = {
-    name: 'cose', // cose layout is good for general graphs
+    name: 'cose',
     idealEdgeLength: 120,
     nodeOverlap: 30,
     refresh: 20,
     fit: true,
     padding: 40,
-    randomize: true, // Start with random positions
+    randomize: true,
     componentSpacing: 150,
-    nodeRepulsion: (node: any) => 450000, // Function for dynamic repulsion
-    edgeElasticity: (edge: any) => 150, // Function for dynamic elasticity
+    nodeRepulsion: (node: any) => 450000,
+    edgeElasticity: (edge: any) => 150,
     nestingFactor: 5,
     gravity: 80,
-    numIter: 1500, // More iterations for better layout
+    numIter: 1500,
     initialTemp: 250,
     coolingFactor: 0.95,
     minTemp: 1.0,
-    animate: true, // Animate layout changes
+    animate: true,
     animationDuration: 500
   };
 
-  // Setup event listeners once cytoscape instance is ready
+  // Setup event listeners (keep as is, but re-run if elements change)
   useEffect(() => {
     const cy = cyRef.current;
     if (cy) {
       cy.removeAllListeners(); // Clear previous listeners
 
-      // Node hover effect
       cy.on('mouseover', 'node', (event) => {
         event.target.addClass('hovered');
-        // Consider adding tooltip logic here if needed
       });
       cy.on('mouseout', 'node', (event) => {
         event.target.removeClass('hovered');
       });
 
-      // Node click handler (example)
       cy.on('tap', 'node', (event) => {
         const nodeData = event.target.data();
         console.log('Node clicked:', nodeData);
         toast({
           title: `Node Clicked: ${nodeData.label || nodeData.id}`,
-          description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`, // Example details
+          description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`, 
           status: 'info',
           duration: 3000,
           isClosable: true,
         });
       });
 
-      // Edge click handler (example)
       cy.on('tap', 'edge', (event) => {
         const edgeData = event.target.data();
         console.log('Edge clicked:', edgeData);
         toast({
           title: `Edge Clicked: ${edgeData.label || edgeData.id}`,
-          description: `Source: ${edgeData.source}, Target: ${edgeData.target}`, // Example details
+          description: `Source: ${edgeData.source}, Target: ${edgeData.target}`, 
           status: 'info',
           duration: 3000,
           isClosable: true,
         });
       });
+      
+      // Re-run layout after elements are updated
+      const currentLayout = cy.layout(layout);
+      currentLayout.run();
+
     }
-  }, [elements, toast]); // Re-run if elements change
+  }, [elements, toast, layout]); // Add layout to dependencies
 
   if (loading) {
     return (
@@ -300,7 +302,7 @@ const GraphVisualization: React.FC = () => {
       <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="500px" p={4}>
         <Text fontSize="lg" fontWeight="bold" mb={2}>No graph data available</Text>
         <Text textAlign="center" maxWidth="600px">
-          No nodes or relationships found in the database. Try uploading a dataset using the Dataset Management section above.
+          No nodes or relationships found for the selected time range. Try adjusting the time slider or uploading a dataset.
         </Text>
       </Box>
     );
@@ -309,12 +311,13 @@ const GraphVisualization: React.FC = () => {
   return (
     <Box border="1px solid #eee" borderRadius="md" overflow="hidden" height="600px" width="100%" position="relative">
       <CytoscapeComponent
-        elements={CytoscapeComponent.normalizeElements(elements)} // Normalize elements
+        key={`${startTime}-${endTime}`} // Force re-render when time range changes significantly if needed
+        elements={CytoscapeComponent.normalizeElements(elements)}
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
-        layout={layout}
-        cy={(cy) => { cyRef.current = cy; }} // Store cy instance in ref
-        minZoom={0.2} // Set zoom limits
+        layout={layout} // Layout is applied via useEffect now
+        cy={(cy) => { cyRef.current = cy; }} 
+        minZoom={0.2}
         maxZoom={2.5}
       />
     </Box>
