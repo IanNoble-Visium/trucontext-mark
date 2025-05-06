@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
   let session;
   const { searchParams } = new URL(request.url);
   const getRange = searchParams.get('range') === 'true';
+  const getAllData = searchParams.get('all') === 'true';
   const startTimeStr = searchParams.get('startTime');
   const endTimeStr = searchParams.get('endTime');
 
@@ -107,7 +108,99 @@ export async function GET(request: NextRequest) {
     let startTime: number | null = startTimeStr ? parseInt(startTimeStr, 10) : null;
     let endTime: number | null = endTimeStr ? parseInt(endTimeStr, 10) : null;
 
-    // Validate timestamps
+    // If requesting all data, skip timestamp validation
+    if (getAllData) {
+      console.log('Fetching ALL graph data without time filtering');
+
+      // Build query to fetch all data
+      let query = `
+        MATCH (n)
+        WITH collect(n) as allNodes LIMIT toInteger($limit)
+        UNWIND allNodes as n
+        OPTIONAL MATCH (n)-[r]-(m)
+        WHERE m in allNodes // Ensure connected node is also in our collection
+        RETURN n, r, m
+      `;
+
+      const params: Record<string, any> = { limit: Math.floor(500) }; // Increased limit for all data
+
+      const result = await session.run(query, params);
+      console.log(`Query returned ${result.records.length} records for ALL data.`);
+
+      // Process results (same as below)
+      const nodes = new Map<string, CytoscapeElement>();
+      const edges = new Map<string, CytoscapeElement>();
+
+      result.records.forEach(record => {
+        const nodeN = record.get('n');
+        const rel = record.get('r');
+        const nodeM = record.get('m');
+
+        // Process nodes and edges (same as in the original code)
+        // Process node N
+        if (nodeN) {
+          const nodeId = nodeN.identity.toString();
+          if (!nodes.has(nodeId)) {
+            const nodeProps = { ...nodeN.properties };
+            const timestamp = toNumber(nodeProps.timestamp); // Convert timestamp
+            nodes.set(nodeId, {
+              group: 'nodes',
+              data: {
+                id: nodeId,
+                label: nodeProps.showname || (nodeN.labels && nodeN.labels.length > 0 ? nodeN.labels[0] : 'Node'),
+                ...nodeProps,
+                timestamp: timestamp ?? undefined, // Add processed timestamp
+              },
+            });
+          }
+        }
+
+        // Process node M
+        if (nodeM && nodeM !== null) {
+          const nodeId = nodeM.identity.toString();
+          if (!nodes.has(nodeId)) {
+            const nodeProps = { ...nodeM.properties };
+            const timestamp = toNumber(nodeProps.timestamp); // Convert timestamp
+            nodes.set(nodeId, {
+              group: 'nodes',
+              data: {
+                id: nodeId,
+                label: nodeProps.showname || (nodeM.labels && nodeM.labels.length > 0 ? nodeM.labels[0] : 'Node'),
+                ...nodeProps,
+                timestamp: timestamp ?? undefined, // Add processed timestamp
+              },
+            });
+          }
+        }
+
+        // Process relationship R
+        if (rel && rel !== null) {
+          const relId = rel.identity.toString();
+          if (!edges.has(relId)) {
+            const relProps = { ...rel.properties };
+            const timestamp = toNumber(relProps.timestamp); // Convert timestamp
+            edges.set(relId, {
+              group: 'edges',
+              data: {
+                id: relId,
+                source: rel.start.toString(),
+                target: rel.end.toString(),
+                label: rel.type,
+                ...relProps,
+                timestamp: timestamp ?? undefined, // Add processed timestamp
+              },
+            });
+          }
+        }
+      });
+
+      const elements = [...nodes.values(), ...edges.values()];
+      console.log(`Processed ${nodes.size} nodes and ${edges.size} edges for ALL data.`);
+
+      return NextResponse.json({ elements });
+    }
+
+    // For time-based queries, validate timestamps
     if ((startTime !== null && isNaN(startTime)) || (endTime !== null && isNaN(endTime)) || (startTime !== null && endTime !== null && startTime >= endTime)) {
         return NextResponse.json({ error: 'Invalid time range parameters' }, { status: 400 });
     }

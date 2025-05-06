@@ -23,12 +23,14 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
 
   // Initialize all state variables at the top
-  const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]);
-  const [currentElements, setCurrentElements] = useState<cytoscape.ElementDefinition[]>([]);
+  const [allElements, setAllElements] = useState<cytoscape.ElementDefinition[]>([]); // All elements from the database
+  const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]); // Elements filtered by time range
+  const [currentElements, setCurrentElements] = useState<cytoscape.ElementDefinition[]>([]); // Elements currently displayed
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
   const [transitionSpeed, setTransitionSpeed] = useState<number>(500); // Transition speed in ms
+  const [initialDataFetched, setInitialDataFetched] = useState<boolean>(false);
   const [lastFetchParams, setLastFetchParams] = useState<{ start: number, end: number } | null>(null);
 
   // Initialize refs
@@ -57,11 +59,111 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     return true;
   };
 
-  // Memoize fetchData to prevent unnecessary refetches
-  const fetchData = useCallback(async (start: number, end: number) => {
-    // Simple validation - don't use validation function here to avoid hook dependency
+  // Fetch all graph data at once
+  const fetchAllData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Make the API request for all data
+      const url = `/api/graph-data?all=true`;
+      const response = await fetch(url);
+
+      // Handle non-OK responses
+      if (!response.ok) {
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.details) {
+            errorMessage = errorData.details;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+          console.error("API error details:", errorData);
+        } catch (jsonError) {
+          console.warn("Could not parse error response as JSON:", jsonError);
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse the JSON response
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError: any) {
+        throw new Error(`Failed to parse response as JSON: ${jsonError.message}`);
+      }
+
+      console.log(`Fetched all graph data: ${data.elements?.length ?? 0} total elements`);
+
+      // Ensure data.elements is an array before setting state
+      if (!data.elements) {
+        console.warn("Response did not contain elements array:", data);
+        setAllElements([]);
+        setInitialDataFetched(false);
+      } else if (!Array.isArray(data.elements)) {
+        console.warn("Elements is not an array:", data.elements);
+        setAllElements([]);
+        setInitialDataFetched(false);
+      } else {
+        // Store all elements from the API
+        setAllElements(data.elements);
+        setInitialDataFetched(true);
+      }
+    } catch (e: any) {
+      console.error("Failed to fetch all graph data:", e);
+      const errorMessage = e.message || "An unknown error occurred while fetching graph data.";
+      setError(errorMessage);
+      toast({
+        title: "Error loading graph data",
+        description: errorMessage,
+        status: "error",
+        duration: 9000,
+        isClosable: true,
+      });
+      setInitialDataFetched(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]); // Only include toast in dependencies
+
+  // Filter data locally based on time range
+  const filterDataByTimeRange = useCallback((start: number, end: number) => {
+    // Simple validation
     if (!start || !end || start <= 0 || end <= 0 || start >= end) {
-      console.error(`fetchData called with invalid parameters: start=${start}, end=${end}`);
+      console.error(`filterDataByTimeRange called with invalid parameters: start=${start}, end=${end}`);
+      return;
+    }
+
+    // Don't refilter if parameters are the same
+    if (lastFetchParams && lastFetchParams.start === start && lastFetchParams.end === end) {
+      console.log("Skipping duplicate filter with same parameters");
+      return;
+    }
+
+    // Store the parameters
+    setLastFetchParams({ start, end });
+
+    console.log(`Filtering data for time range: ${new Date(start).toISOString()} - ${new Date(end).toISOString()}`);
+
+    // Filter elements based on timestamp
+    const filteredElements = allElements.filter(el => {
+      const timestamp = el.data.timestamp;
+      if (!timestamp) return true; // Include elements without timestamp
+
+      const elementTime = new Date(timestamp).getTime();
+      return elementTime >= start && elementTime <= end;
+    });
+
+    console.log(`Filtered ${filteredElements.length} elements from ${allElements.length} total elements`);
+    setElements(filteredElements);
+  }, [allElements, lastFetchParams]);
+
+  // Fallback: fetch data for a specific time range if all data fetch fails
+  const fetchTimeRangeData = useCallback(async (start: number, end: number) => {
+    // Simple validation
+    if (!start || !end || start <= 0 || end <= 0 || start >= end) {
+      console.error(`fetchTimeRangeData called with invalid parameters: start=${start}, end=${end}`);
       return;
     }
 
@@ -139,10 +241,21 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     } finally {
       setLoading(false);
     }
-  }, [toast, lastFetchParams]); // Only include toast and lastFetchParams in dependencies
+  }, [toast, lastFetchParams, currentElements]); // Include dependencies
+
+  // Initial data fetch
+  useEffect(() => {
+    // Fetch all data once when component mounts
+    fetchAllData();
+  }, [fetchAllData]);
 
   // Handle time range changes
   useEffect(() => {
+    // If we haven't fetched initial data yet, skip filtering
+    if (!initialDataFetched) {
+      return;
+    }
+
     // If times are invalid, use safe defaults
     let effectiveStart = startTime;
     let effectiveEnd = endTime;
@@ -158,9 +271,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     const safeStart = Math.min(effectiveStart, currentTime);
     const safeEnd = Math.min(effectiveEnd, currentTime);
 
-    // Fetch data with validated times
-    fetchData(safeStart, safeEnd);
-  }, [startTime, endTime, fetchData, safeStartTime, safeCurrentTime]);
+    // Filter data locally with validated times
+    filterDataByTimeRange(safeStart, safeEnd);
+  }, [startTime, endTime, initialDataFetched, filterDataByTimeRange, safeStartTime, safeCurrentTime]);
 
   // Enhanced stylesheet (keep as is)
   const stylesheet: cytoscape.Stylesheet[] = [
@@ -382,7 +495,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
   // Handle smooth transitions between time ranges
   useEffect(() => {
-    if (!elements.length) return;
+    if (!elements.length && !currentElements.length) return;
 
     // Find elements to add (in elements but not in currentElements)
     const elementsToAdd = elements.filter(newEl =>
@@ -402,7 +515,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       return; // No changes needed
     }
 
-    console.log(`Transitioning: Adding ${elementsToAdd.length} elements, removing ${elementsToRemove.length} elements`);
+    console.log(`Transitioning: Adding ${elementsToAdd.length} elements, removing ${elementsToRemove.length} elements with speed ${transitionSpeed}ms`);
 
     if (!animationEnabled) {
       // If animations disabled, update immediately
@@ -419,25 +532,62 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           elementsToRemove.some(remEl => remEl.data.id === el.id())
         );
 
-        // Animate opacity before removing
-        elsToRemove.animate({
-          style: { 'opacity': 0 },
-          duration: transitionSpeed
-        }, {
-          complete: () => {
-            // After fade out, update the current elements by removing these elements
-            setCurrentElements(currentElements.filter(curEl =>
-              !elementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
-            ));
+        if (elsToRemove.length > 0) {
+          // Animate opacity before removing
+          elsToRemove.animate({
+            style: { 'opacity': 0 },
+            duration: transitionSpeed,
+            easing: 'ease-out'
+          }, {
+            complete: () => {
+              // After fade out, update the current elements by removing these elements
+              setCurrentElements(currentElements.filter(curEl =>
+                !elementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
+              ));
 
-            // Then add new elements after a short delay
-            setTimeout(() => {
+              // Then add new elements after a short delay
               if (elementsToAdd.length > 0) {
-                setCurrentElements(prev => [...prev, ...elementsToAdd]);
+                setTimeout(() => {
+                  setCurrentElements(prev => [...prev, ...elementsToAdd]);
+
+                  // After elements are added, animate them in
+                  setTimeout(() => {
+                    const cy = cyRef.current;
+                    if (cy) {
+                      // Find the newly added elements
+                      const newEls = cy.elements().filter(el =>
+                        elementsToAdd.some(addEl => addEl.data.id === el.id())
+                      );
+
+                      if (newEls.length > 0) {
+                        // Start with opacity 0
+                        newEls.style({ 'opacity': 0 });
+
+                        // Animate the entrance
+                        newEls.animate({
+                          style: { 'opacity': 1 },
+                          duration: transitionSpeed,
+                          easing: 'ease-in'
+                        });
+                      }
+                    }
+                  }, 50);
+                }, Math.min(100, transitionSpeed / 5));
               }
-            }, 100);
+            }
+          });
+        } else {
+          // If we couldn't find the elements to remove in the graph, just update the state
+          setCurrentElements(currentElements.filter(curEl =>
+            !elementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
+          ));
+
+          if (elementsToAdd.length > 0) {
+            setTimeout(() => {
+              setCurrentElements(prev => [...prev, ...elementsToAdd]);
+            }, Math.min(100, transitionSpeed / 5));
           }
-        });
+        }
       }
     } else if (elementsToAdd.length > 0) {
       // If only adding elements (no removals), add them directly
@@ -452,14 +602,17 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
             elementsToAdd.some(addEl => addEl.data.id === el.id())
           );
 
-          // Start with opacity 0 and fade in
-          newEls.style({ 'opacity': 0 });
+          if (newEls.length > 0) {
+            // Start with opacity 0 and fade in
+            newEls.style({ 'opacity': 0 });
 
-          // Animate the entrance
-          newEls.animate({
-            style: { 'opacity': 1 },
-            duration: transitionSpeed
-          });
+            // Animate the entrance
+            newEls.animate({
+              style: { 'opacity': 1 },
+              duration: transitionSpeed,
+              easing: 'ease-in'
+            });
+          }
         }
       }, 50);
     }
@@ -476,6 +629,20 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
     // Add event listener
     window.addEventListener('transitionspeedchange', handleTransitionSpeedChange as EventListener);
+
+    // Also check localStorage on mount in case we missed the event
+    try {
+      const storedSpeed = localStorage.getItem('graph_transition_speed');
+      if (storedSpeed) {
+        const speed = parseInt(storedSpeed, 10);
+        if (!isNaN(speed) && speed > 0) {
+          console.log(`GraphVisualization: Using stored transition speed: ${speed}ms`);
+          setTransitionSpeed(speed);
+        }
+      }
+    } catch (error) {
+      console.error('Error reading transition speed from localStorage:', error);
+    }
 
     // Clean up
     return () => {

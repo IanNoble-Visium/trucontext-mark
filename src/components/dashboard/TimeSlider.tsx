@@ -414,8 +414,23 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     });
 
     // Dispatch a custom event that GraphVisualization can listen for
-    const event = new CustomEvent('transitionspeedchange', { detail: { speed } });
-    window.dispatchEvent(event);
+    try {
+      // Create a custom event with the speed data
+      const event = new CustomEvent('transitionspeedchange', {
+        detail: { speed },
+        bubbles: true,
+        cancelable: true
+      });
+
+      // Dispatch the event on the window object
+      console.log(`TimeSlider: Dispatching transition speed change event: ${speed}ms`);
+      window.dispatchEvent(event);
+
+      // Also store in localStorage as a backup communication method
+      localStorage.setItem('graph_transition_speed', speed.toString());
+    } catch (error) {
+      console.error('Error dispatching transition speed event:', error);
+    }
   }, [toast]);
 
   // Function to step forward/backward in time
