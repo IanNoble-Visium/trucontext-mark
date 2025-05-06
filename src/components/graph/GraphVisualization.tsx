@@ -39,7 +39,10 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           const errorData = await response.json();
           if (errorData.details) {
             errorMessage = errorData.details;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
           }
+          console.error("API error details:", errorData);
         } catch (jsonError) {
           console.warn("Could not parse error response as JSON:", jsonError);
         }
@@ -285,14 +288,34 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   }
 
   if (error) {
+    // Determine if this is a Neo4j error or another type
+    const isNeo4jError = error.includes('Neo4j') || error.includes('Cypher') || error.includes('LIMIT');
+    const isDataError = error.includes('No data') || error.includes('empty');
+
     return (
       <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="500px" color="red.500" p={4}>
         <Text fontSize="lg" fontWeight="bold" mb={2}>Error loading graph</Text>
         <Text textAlign="center" maxWidth="600px">{error}</Text>
-        <Text mt={4} fontSize="sm" color="gray.500">
-          This may be due to a Neo4j connection issue or a Cypher query syntax error.
-          Try uploading a dataset first or check the server logs for more details.
-        </Text>
+
+        {isNeo4jError && (
+          <Text mt={4} fontSize="sm" color="gray.500">
+            This appears to be a database query issue. The system administrator has been notified.
+            Try adjusting the time range or uploading a different dataset.
+          </Text>
+        )}
+
+        {isDataError && (
+          <Text mt={4} fontSize="sm" color="gray.500">
+            No data was found for the selected time range. Try adjusting the time slider to a different period.
+          </Text>
+        )}
+
+        {!isNeo4jError && !isDataError && (
+          <Text mt={4} fontSize="sm" color="gray.500">
+            This may be due to a connection issue or a data format error.
+            Try refreshing the page or uploading a dataset first.
+          </Text>
+        )}
       </Box>
     );
   }
