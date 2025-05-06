@@ -23,15 +23,45 @@ const GraphVisualization: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
+        // Add a small delay to ensure the API is ready
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         const response = await fetch('/api/graph-data');
+
+        // Handle non-OK responses
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.details || `HTTP error! status: ${response.status}`);
+          let errorMessage = `HTTP error! status: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.details) {
+              errorMessage = errorData.details;
+            }
+          } catch (jsonError) {
+            console.warn("Could not parse error response as JSON:", jsonError);
+          }
+          throw new Error(errorMessage);
         }
-        const data = await response.json();
+
+        // Parse the JSON response
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          throw new Error(`Failed to parse response as JSON: ${jsonError.message}`);
+        }
+
         console.log("Fetched graph data:", data.elements?.length ?? 0, "elements");
+
         // Ensure data.elements is an array before setting state
-        setElements(Array.isArray(data.elements) ? data.elements : []);
+        if (!data.elements) {
+          console.warn("Response did not contain elements array:", data);
+          setElements([]);
+        } else if (!Array.isArray(data.elements)) {
+          console.warn("Elements is not an array:", data.elements);
+          setElements([]);
+        } else {
+          setElements(data.elements);
+        }
       } catch (e: any) {
         console.error("Failed to fetch graph data:", e);
         const errorMessage = e.message || "An unknown error occurred while fetching graph data.";
@@ -254,18 +284,26 @@ const GraphVisualization: React.FC = () => {
 
   if (error) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="500px" color="red.500">
-        <Text>Error loading graph: {error}</Text>
+      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="500px" color="red.500" p={4}>
+        <Text fontSize="lg" fontWeight="bold" mb={2}>Error loading graph</Text>
+        <Text textAlign="center" maxWidth="600px">{error}</Text>
+        <Text mt={4} fontSize="sm" color="gray.500">
+          This may be due to a Neo4j connection issue or a Cypher query syntax error.
+          Try uploading a dataset first or check the server logs for more details.
+        </Text>
       </Box>
     );
   }
 
   if (!elements || elements.length === 0) {
-      return (
-          <Box display="flex" justifyContent="center" alignItems="center" height="500px">
-              <Text>No graph data found or failed to load. Check Neo4j connection and query.</Text>
-          </Box>
-      );
+    return (
+      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="500px" p={4}>
+        <Text fontSize="lg" fontWeight="bold" mb={2}>No graph data available</Text>
+        <Text textAlign="center" maxWidth="600px">
+          No nodes or relationships found in the database. Try uploading a dataset using the Dataset Management section above.
+        </Text>
+      </Box>
+    );
   }
 
   return (

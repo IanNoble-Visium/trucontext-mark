@@ -29,15 +29,39 @@ export async function GET() {
     session = await getSession();
     console.log('Neo4j session obtained for GET /api/graph-data');
 
-    // Example Cypher query: Fetch first 100 nodes and their relationships
-    // Adjust this query based on your actual graph model and needs
-    const result = await session.run(
-      `MATCH (n)
-       WITH n LIMIT 100
-       OPTIONAL MATCH (n)-[r]-(m)
-       WHERE id(m) IN [id(n) | n IN collect(n)] // Ensure connected nodes are within the limit
-       RETURN n, r, m`
-    );
+    let result;
+    try {
+      // Try the more efficient query first
+      result = await session.run(
+        `MATCH (n)
+         WITH collect(n) as nodes LIMIT 100
+         UNWIND nodes as n
+         OPTIONAL MATCH (n)-[r]-(m)
+         WHERE m IN nodes // Ensure connected nodes are within the limit
+         RETURN n, r, m`
+      );
+    } catch (queryError) {
+      console.warn('Advanced query failed, falling back to simpler query:', queryError);
+
+      try {
+        // Fallback to a simpler query if the first one fails
+        result = await session.run(
+          `MATCH (n)
+           WITH n LIMIT 50
+           OPTIONAL MATCH (n)-[r]-(m)
+           RETURN n, r, m`
+        );
+      } catch (fallbackError) {
+        console.warn('Second query failed, falling back to simplest query:', fallbackError);
+
+        // Final fallback - just get some nodes without relationships
+        result = await session.run(
+          `MATCH (n)
+           RETURN n, null as r, null as m
+           LIMIT 25`
+        );
+      }
+    }
 
     console.log(`Query returned ${result.records.length} records.`);
 
@@ -49,6 +73,7 @@ export async function GET() {
       const rel = record.get('r');
       const nodeM = record.get('m');
 
+      // Process the first node (n)
       if (nodeN) {
         const nodeId = nodeN.identity.toString(); // Use Neo4j internal ID
         if (!nodes.has(nodeId)) {
@@ -56,28 +81,30 @@ export async function GET() {
             group: 'nodes',
             data: {
               id: nodeId,
-              label: nodeN.labels[0] || 'Node', // Use first label or default
+              label: nodeN.labels && nodeN.labels.length > 0 ? nodeN.labels[0] : 'Node', // Use first label or default
               ...nodeN.properties, // Spread node properties
             },
           });
         }
       }
 
-      if (nodeM) {
+      // Process the second node (m) if it exists
+      if (nodeM && nodeM !== null) {
         const nodeId = nodeM.identity.toString();
         if (!nodes.has(nodeId)) {
           nodes.set(nodeId, {
             group: 'nodes',
             data: {
               id: nodeId,
-              label: nodeM.labels[0] || 'Node',
+              label: nodeM.labels && nodeM.labels.length > 0 ? nodeM.labels[0] : 'Node',
               ...nodeM.properties,
             },
           });
         }
       }
 
-      if (rel) {
+      // Process the relationship (r) if it exists
+      if (rel && rel !== null) {
         const relId = rel.identity.toString();
         if (!edges.has(relId)) {
           edges.set(relId, {
@@ -105,9 +132,15 @@ export async function GET() {
     let errorMessage = 'Internal Server Error';
     if (error instanceof Error) {
         errorMessage = error.message;
+
         // Check for specific Neo4j connection errors
         if (errorMessage.includes('Could not connect') || errorMessage.includes('ServiceUnavailable')) {
             errorMessage = 'Failed to connect to Neo4j database. Please check connection details and ensure the database is running.';
+        }
+
+        // Check for Cypher syntax errors
+        if (errorMessage.includes('Invalid input') || errorMessage.includes('expected')) {
+            errorMessage = `Cypher syntax error: ${errorMessage}`;
         }
     }
     return NextResponse.json(
