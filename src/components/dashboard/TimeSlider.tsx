@@ -1,5 +1,13 @@
 "use client";
 
+// Define drag state types we'll use throughout the component
+type DragState = {
+  isDragging: boolean;
+  startX: number;
+  startTime: number;
+  endTime: number;
+};
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
@@ -39,13 +47,15 @@ import {
 } from 'react-icons/fa'; // Assuming react-icons is installed
 
 interface TimeSliderProps {
+  minTimestamp: number;
+  maxTimestamp: number;
   onTimeRangeChange: (startTime: number, endTime: number) => void;
 }
 
 // Define a type for Timeout to avoid NodeJS namespace issues
 type TimeoutType = ReturnType<typeof setTimeout>;
 
-const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSliderProps) => {
+const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onTimeRangeChange }: TimeSliderProps) => {
   // For safe dates, always use hardcoded past dates instead of relying on system time
   // which may be incorrect (as seen in the error with 2025 dates)
   const safePastDate = new Date('2023-01-01T00:00:00.000Z').getTime();
@@ -57,8 +67,6 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
   const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000; // One month ago
 
   // Initialize all state variables at the top
-  const [minTimestamp, setMinTimestamp] = useState<number>(oneYearAgo);
-  const [maxTimestamp, setMaxTimestamp] = useState<number>(now);
   const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([oneMonthAgo, now]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -68,6 +76,9 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [showCustomDatePicker, setShowCustomDatePicker] = useState<boolean>(false);
+  const [isDraggingCenter, setIsDraggingCenter] = useState<boolean>(false);
+  const [dragStartX, setDragStartX] = useState<number>(0);
+  const [dragStartRange, setDragStartRange] = useState<[number, number]>([0, 0]);
 
   // Initialize hooks
   const toast = useToast();
@@ -75,6 +86,25 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
   // Initialize refs
   const timeoutRef = useRef<TimeoutType | null>(null);
   const initialRenderRef = useRef<boolean>(true);
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const dragMoveHandler = useRef<(e: MouseEvent) => void>();
+  const dragEndHandler = useRef<(e: MouseEvent) => void>();
+  
+  // Create a comprehensive drag state ref that contains all needed values
+  // This prevents issues with React state updates not being immediately available
+  const dragStateRef = useRef<{
+    isDragging: boolean;
+    startX: number;
+    startTime: number;
+    endTime: number;
+    lastClientX: number; // Track the last mouse position
+  }>({
+    isDragging: false,
+    startX: 0,
+    startTime: 0,
+    endTime: 0,
+    lastClientX: 0
+  });
 
   // Format timestamp for display - simple function, no dependencies
   const formatTimestamp = (timestamp: number) => {
@@ -103,24 +133,59 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     const maxAllowedTime = new Date('2024-01-01T00:00:00.000Z').getTime();
     const currentTime = Math.min(Date.now(), maxAllowedTime);
 
-    // Check for system clock issues (future years)
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    try {
+      // Check for system clock issues (future years)
+      const startDate = new Date(start);
+      const endDate = new Date(end);
 
-    // If dates are beyond 2024, use safe fallbacks
-    if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
-      console.warn(`TimeSlider: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
+      // If dates are beyond 2024, use safe fallbacks
+      if (startDate.getFullYear() > 2024 || endDate.getFullYear() > 2024) {
+        console.warn(`TimeSlider: Detected potentially incorrect date values: ${startDate.toISOString()} - ${endDate.toISOString()}`);
+
+        // Use safe fallback dates (2023)
+        const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+        const safeStartTime = new Date('2023-12-01T00:00:00.000Z').getTime();
+
+        // Only call onTimeRangeChange if this is not the initial render or if explicitly told to skip
+        if (!initialRenderRef.current || !skipInitialCallback) {
+          console.log(`TimeSlider: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
+          onTimeRangeChange(safeStartTime, safeCurrentTime);
+        } else {
+          console.log('TimeSlider: Skipping initial callback to prevent feedback loop');
+          initialRenderRef.current = false;
+        }
+
+        return;
+      }
+
+      // Check for unreasonable dates (far in the past)
+      if (startDate.getFullYear() < 2000 || endDate.getFullYear() < 2000) {
+        console.warn(`TimeSlider: Detected potentially incorrect past dates: ${startDate.toISOString()} - ${endDate.toISOString()}`);
+
+        // Use safe fallback dates (2023)
+        const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
+        const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
+
+        if (!initialRenderRef.current || !skipInitialCallback) {
+          console.log(`TimeSlider: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
+          onTimeRangeChange(safeStartTime, safeCurrentTime);
+        } else {
+          console.log('TimeSlider: Skipping initial callback to prevent feedback loop');
+          initialRenderRef.current = false;
+        }
+
+        return;
+      }
+    } catch (error) {
+      console.error(`TimeSlider: Error validating dates: ${error}`);
 
       // Use safe fallback dates (2023)
       const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
-      const safeStartTime = new Date('2023-12-01T00:00:00.000Z').getTime();
+      const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
 
-      // Only call onTimeRangeChange if this is not the initial render or if explicitly told to skip
       if (!initialRenderRef.current || !skipInitialCallback) {
-        console.log(`TimeSlider: Using safe time range: ${new Date(safeStartTime).toISOString()} - ${new Date(safeCurrentTime).toISOString()}`);
         onTimeRangeChange(safeStartTime, safeCurrentTime);
       } else {
-        console.log('TimeSlider: Skipping initial callback to prevent feedback loop');
         initialRenderRef.current = false;
       }
 
@@ -157,130 +222,6 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     }, 1000); // 1 second debounce
   }, [updateTimeRange]);
 
-  // Fetch min/max timestamps from the backend
-  const fetchTimeRange = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // Get current time before making the request (with safe upper bound)
-      const maxAllowedTime = new Date('2024-01-01T00:00:00.000Z').getTime();
-      const currentTime = Math.min(Date.now(), maxAllowedTime);
-
-      // Validate current time to detect system clock issues
-      const currentDate = new Date(currentTime);
-      const currentYear = currentDate.getFullYear();
-
-      // If the current year is beyond 2024, we definitely have a system clock issue
-      if (currentYear > 2024) {
-        console.warn(`Detected potentially incorrect system date: ${currentDate.toISOString()}. Using safe fallback dates.`);
-        // Use safe fallback dates (2023)
-        const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
-        const safeStartTime = new Date('2023-12-01T00:00:00.000Z').getTime();
-
-        setMinTimestamp(safeStartTime);
-        setMaxTimestamp(safeCurrentTime);
-        setCurrentTimeRange([safeStartTime, safeCurrentTime]);
-
-        // Make sure we're passing real values, not zeros
-        if (safeStartTime > 0 && safeCurrentTime > 0) {
-          updateTimeRange(safeStartTime, safeCurrentTime, true);
-        }
-
-        toast({
-          title: 'System Date Warning',
-          description: 'Your system date appears to be set incorrectly. Using safe date range instead.',
-          status: 'warning',
-          duration: 5000,
-          isClosable: true,
-        });
-
-        setIsLoading(false);
-        return;
-      }
-
-      // Normal flow - fetch from API
-      try {
-        const response = await fetch('/api/graph-data?range=true');
-        if (!response.ok) {
-          throw new Error('Failed to fetch time range');
-        }
-        const data = await response.json();
-
-        // Ensure we don't use future dates or invalid dates
-        let minTs = data.minTimestamp || 0;
-        let maxTs = data.maxTimestamp || 0;
-
-        // Validate the received timestamps
-        const isValidMinTs = minTs && !isNaN(minTs) && Number.isFinite(minTs) && minTs > 0;
-        const isValidMaxTs = maxTs && !isNaN(maxTs) && Number.isFinite(maxTs) && maxTs > 0;
-
-        // If timestamps are invalid or in the future, use safe defaults
-        if (!isValidMinTs || minTs > currentTime) {
-          console.warn(`Invalid or future minTimestamp received: ${minTs}. Using safe default.`);
-          minTs = currentTime - 48 * 60 * 60 * 1000; // 48 hours ago
-        }
-
-        if (!isValidMaxTs || maxTs > currentTime) {
-          console.warn(`Invalid or future maxTimestamp received: ${maxTs}. Using current time.`);
-          maxTs = currentTime;
-        }
-
-        console.log(`TimeSlider: Using time range: ${new Date(minTs).toISOString()} - ${new Date(maxTs).toISOString()}`);
-
-        // Ensure min is less than max
-        if (minTs >= maxTs) {
-          console.warn('Min timestamp is greater than or equal to max timestamp. Using safe range.');
-          const safeStart = maxTs - 48 * 60 * 60 * 1000;
-          setMinTimestamp(safeStart);
-          setMaxTimestamp(maxTs);
-          setCurrentTimeRange([safeStart, maxTs]);
-          updateTimeRange(safeStart, maxTs, true);
-        } else {
-          setMinTimestamp(minTs);
-          setMaxTimestamp(maxTs);
-
-          // Use a reasonable default range (last 24 hours) instead of the full range
-          const defaultStart = Math.max(minTs, maxTs - 24 * 60 * 60 * 1000);
-
-          setCurrentTimeRange([defaultStart, maxTs]);
-          updateTimeRange(defaultStart, maxTs, true);
-        }
-      } catch (apiError) {
-        throw apiError;
-      }
-    } catch (error: any) {
-      console.error("Failed to fetch time range:", error);
-
-      // Use safe fallback values that are definitely in the past
-      const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
-      const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
-
-      setMinTimestamp(safeStartTime);
-      setMaxTimestamp(safeCurrentTime);
-      setCurrentTimeRange([safeStartTime, safeCurrentTime]);
-      updateTimeRange(safeStartTime, safeCurrentTime, true);
-
-      toast({
-        title: 'Error Fetching Time Range',
-        description: error.message || 'Could not load time boundaries. Using default range.',
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast, updateTimeRange]);
-
-  // Handle slider changes
-  const handleSliderChange = useCallback((val: [number, number]) => {
-    if (val[0] > 0 && val[1] > 0 && val[0] < val[1]) {
-      setCurrentTimeRange(val);
-      debouncedUpdateTimeRange(val[0], val[1]);
-    } else {
-      console.log('TimeSlider: Ignoring invalid slider values');
-    }
-  }, [debouncedUpdateTimeRange]);
-
   // Animation logic with speed control
   const startAnimation = useCallback(() => {
     if (isLoading || minTimestamp === maxTimestamp) return;
@@ -290,23 +231,29 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     const maxAllowedTime = new Date('2024-01-01T00:00:00.000Z').getTime();
     const currentTime = Math.min(Date.now(), maxAllowedTime);
 
-    const safeMinTimestamp = Math.min(minTimestamp, currentTime);
-    const safeMaxTimestamp = Math.min(maxTimestamp, currentTime);
-
-    let currentEndTime = safeMinTimestamp;
+    // Use the current time range instead of min/max timestamps
+    const startTime = currentTimeRange[0];
+    const endTime = currentTimeRange[1];
+    const windowDuration = endTime - startTime; // Keep track of the original window duration
+    
+    // Calculate the maximum animation end point, preserving the window size
+    const animationEndTime = Math.min(maxTimestamp - windowDuration, currentTime - windowDuration);
+    
+    // Start from the current position
+    let currentPosition = startTime;
 
     // Adjust number of steps based on playback speed
-    // More steps = smoother animation but slower progress
     const numSteps = playbackSpeed < 1 ? 40 : 20;
-    const step = (safeMaxTimestamp - safeMinTimestamp) / numSteps;
+    const totalPlaybackRange = Math.max(0, animationEndTime - startTime);
+    const step = totalPlaybackRange / numSteps;
 
     let lastUpdateTime = 0;
 
     // Calculate interval based on playback speed
-    // Faster speed = shorter interval
     const intervalTime = Math.max(100, Math.floor(1000 / playbackSpeed));
 
     console.log(`TimeSlider: Animation starting with speed ${playbackSpeed}x (interval: ${intervalTime}ms)`);
+    console.log(`TimeSlider: Window duration: ${windowDuration}ms (${windowDuration / (1000 * 60)} minutes)`);
 
     const interval = setInterval(() => {
       const now = Date.now();
@@ -321,20 +268,31 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
 
       // Adjust step size based on playback speed
       const adjustedStep = step * playbackSpeed;
-      currentEndTime += adjustedStep;
+      currentPosition += adjustedStep;
 
-      if (currentEndTime >= safeMaxTimestamp) {
-        currentEndTime = safeMaxTimestamp;
+      // Check if we've reached the end of the animation
+      if (currentPosition >= animationEndTime) {
+        currentPosition = animationEndTime;
         stopAnimation();
         return;
       }
 
-      setCurrentTimeRange([safeMinTimestamp, currentEndTime]);
-      debouncedUpdateTimeRange(safeMinTimestamp, currentEndTime);
+      // Calculate new start and end times while preserving the original window duration
+      const newStart = currentPosition;
+      const newEnd = newStart + windowDuration;
+      
+      // Validate the new range is within bounds
+      if (newEnd <= maxTimestamp) {
+        setCurrentTimeRange([newStart, newEnd]);
+        debouncedUpdateTimeRange(newStart, newEnd);
+      } else {
+        // We've reached the end, stop the animation
+        stopAnimation();
+      }
     }, intervalTime);
 
     setAnimationInterval(interval);
-  }, [isLoading, minTimestamp, maxTimestamp, debouncedUpdateTimeRange, playbackSpeed, stopAnimation]);
+  }, [isLoading, minTimestamp, maxTimestamp, currentTimeRange, debouncedUpdateTimeRange, playbackSpeed, stopAnimation]);
 
   const togglePlayPause = useCallback(() => {
     if (isPlaying) {
@@ -344,18 +302,14 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     }
   }, [isPlaying, startAnimation, stopAnimation]);
 
-  // Initial fetch
+  // Initial range setup based on props
   useEffect(() => {
-    // Set a safe initial range before fetching to prevent 0,0 from being sent
-    const safeStart = new Date('2023-12-30T00:00:00.000Z').getTime();
-    const safeEnd = new Date('2023-12-31T23:59:59.999Z').getTime();
-
-    if (safeStart > 0 && safeEnd > 0) {
-      setCurrentTimeRange([safeStart, safeEnd]);
-    }
-
-    fetchTimeRange();
-  }, [fetchTimeRange]);
+    // Clamp initial range to min/max
+    const defaultStart = Math.max(minTimestamp, maxTimestamp - 24 * 60 * 60 * 1000);
+    setCurrentTimeRange([defaultStart, maxTimestamp]);
+    updateTimeRange(defaultStart, maxTimestamp, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minTimestamp, maxTimestamp]);
 
   // Function to handle custom date selection
   const handleCustomDateApply = useCallback(() => {
@@ -433,40 +387,28 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
     }
   }, [toast]);
 
-  // Function to step forward/backward in time
   const stepTimeRange = useCallback((direction: 'forward' | 'backward') => {
-    // Access currentTimeRange directly from state to avoid closure issues
-    // This prevents React Hook dependency issues
     const start = currentTimeRange[0];
     const end = currentTimeRange[1];
     const rangeDuration = end - start;
-
-    // Step by 50% of the current range
     const stepSize = rangeDuration * 0.5;
-
+    let newStart, newEnd;
     if (direction === 'forward') {
-      const newStart = start + stepSize;
-      const newEnd = end + stepSize;
-
-      // Don't go beyond the max timestamp
-      if (newEnd <= maxTimestamp) {
-        setCurrentTimeRange([newStart, newEnd]);
-        debouncedUpdateTimeRange(newStart, newEnd);
-      }
+      newStart = Math.min(start + stepSize, maxTimestamp - rangeDuration);
+      newEnd = Math.min(end + stepSize, maxTimestamp);
     } else {
-      const newStart = start - stepSize;
-      const newEnd = end - stepSize;
-
-      // Don't go before the min timestamp
-      if (newStart >= minTimestamp) {
-        setCurrentTimeRange([newStart, newEnd]);
-        debouncedUpdateTimeRange(newStart, newEnd);
-      }
+      newStart = Math.max(start - stepSize, minTimestamp);
+      newEnd = Math.max(end - stepSize, minTimestamp + rangeDuration);
+    }
+    if (newStart < newEnd) {
+      setCurrentTimeRange([newStart, newEnd]);
+      debouncedUpdateTimeRange(newStart, newEnd);
     }
   }, [currentTimeRange, minTimestamp, maxTimestamp, debouncedUpdateTimeRange]);
 
   // Cleanup interval on unmount
   useEffect(() => {
+    // Cleanup function
     return () => {
       if (animationInterval) {
         clearInterval(animationInterval);
@@ -474,8 +416,135 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      // Always clean up event listeners on unmount using the refs
+      if (dragMoveHandler.current) {
+        document.removeEventListener('mousemove', dragMoveHandler.current);
+      }
+      if (dragEndHandler.current) {
+        document.removeEventListener('mouseup', dragEndHandler.current);
+      }
+      document.body.classList.remove('timeline-dragging');
     };
   }, [animationInterval]);
+
+  const handleCenterDragMove = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragStateRef.current.isDragging || !sliderRef.current) return;
+    const sliderRect = sliderRef.current.getBoundingClientRect();
+    const sliderWidth = sliderRect.width;
+    if (sliderWidth <= 0) return;
+    const { startX, startTime, endTime } = dragStateRef.current;
+    const deltaX = e.clientX - startX;
+    const deltaRatio = deltaX / sliderWidth;
+    const totalTimeRange = maxTimestamp - minTimestamp;
+    const deltaTime = deltaRatio * totalTimeRange;
+    const originalDuration = endTime - startTime;
+    let newStart = Math.round(startTime + deltaTime);
+    let newEnd = newStart + originalDuration;
+    if (newStart < minTimestamp) {
+      newStart = minTimestamp;
+      newEnd = minTimestamp + originalDuration;
+    } else if (newEnd > maxTimestamp) {
+      newEnd = maxTimestamp;
+      newStart = maxTimestamp - originalDuration;
+    }
+    // Clamp
+    newStart = Math.max(minTimestamp, Math.min(newStart, maxTimestamp - originalDuration));
+    newEnd = Math.max(minTimestamp + originalDuration, Math.min(newEnd, maxTimestamp));
+    setCurrentTimeRange([newStart, newEnd]);
+    updateTimeRange(newStart, newEnd);
+  }, [minTimestamp, maxTimestamp, updateTimeRange]);
+  dragMoveHandler.current = handleCenterDragMove;
+
+  // Define the handleCenterDragEnd function with improved cleanup
+  const handleCenterDragEnd = useCallback((e: MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    console.debug('Drag end triggered by', e.type);
+    document.removeEventListener('mousemove', dragMoveHandler.current!, true);
+    document.removeEventListener('mouseup', dragEndHandler.current!, true);
+    if (dragStateRef.current.isDragging) {
+      dragStateRef.current.isDragging = false;
+      setIsDraggingCenter(false);
+      document.body.classList.remove('timeline-dragging');
+      document.body.style.cursor = '';
+      const finalStart = currentTimeRange[0];
+      const finalEnd = currentTimeRange[1];
+      console.log(`Drag completed: ${new Date(finalStart).toISOString()} - ${new Date(finalEnd).toISOString()}`);
+    }
+  }, [currentTimeRange]);
+  dragEndHandler.current = handleCenterDragEnd;
+
+  // Define a more robust handleCenterDragStart function with low-level event handling
+  const handleCenterDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isLoading || isPlaying) return;
+    if (dragStateRef.current.isDragging) return;
+    console.log('Drag start event triggered at', e.clientX);
+    const exactStart = currentTimeRange[0];
+    const exactEnd = currentTimeRange[1];
+    setIsDraggingCenter(true);
+    dragStateRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startTime: exactStart,
+      endTime: exactEnd,
+      lastClientX: e.clientX
+    };
+    document.body.classList.add('timeline-dragging');
+    document.body.style.cursor = 'grabbing';
+    document.addEventListener('mousemove', dragMoveHandler.current!, true);
+    document.addEventListener('mouseup', dragEndHandler.current!, true);
+    console.log(`Drag started: ${new Date(exactStart).toISOString()} - ${new Date(exactEnd).toISOString()}`);
+  }, [isLoading, isPlaying, currentTimeRange]);
+
+  // Add stronger style elements to ensure dragging behavior works properly
+  useEffect(() => {
+    // Create a style element with more comprehensive rules
+    const styleElement = document.createElement('style');
+    styleElement.innerHTML = `
+      body.timeline-dragging {
+        user-select: none !important;
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        cursor: grabbing !important;
+        overflow-x: hidden !important;
+      }
+      body.timeline-dragging * {
+        user-select: none !important;
+        -webkit-user-select: none !important;
+        cursor: grabbing !important;
+        pointer-events: none;
+      }
+      body.timeline-dragging [data-testid="center-drag-area"] {
+        pointer-events: auto !important;
+        cursor: grabbing !important;
+      }
+    `;
+    document.head.appendChild(styleElement);
+    
+    // Cleanup function to remove the style element
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
+
+  // After all state declarations, add:
+  useEffect(() => {
+    // Only set loading to false if min/max are valid and not equal
+    if (
+      typeof minTimestamp === 'number' &&
+      typeof maxTimestamp === 'number' &&
+      minTimestamp < maxTimestamp
+    ) {
+      setIsLoading(false);
+    }
+  }, [minTimestamp, maxTimestamp]);
 
   if (isLoading) {
     return <Box p={4} borderWidth="1px" borderRadius="lg"><Spinner size="md" /></Box>;
@@ -623,22 +692,77 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
 
         <HStack spacing={4}>
           <Text fontSize="xs" minW="140px" textAlign="center">{formatTimestamp(currentTimeRange[0])}</Text>
-          <RangeSlider
-            aria-label={['min', 'max']}
-            min={minTimestamp}
-            max={maxTimestamp}
-            step={(maxTimestamp - minTimestamp) / 500}
-            value={currentTimeRange}
-            onChange={handleSliderChange}
-            isDisabled={isLoading || isPlaying}
-            flex="1"
-          >
-            <RangeSliderTrack>
-              <RangeSliderFilledTrack />
-            </RangeSliderTrack>
-            <RangeSliderThumb index={0} />
-            <RangeSliderThumb index={1} />
-          </RangeSlider>
+          <Box position="relative" flex="1" ref={sliderRef}>
+            {/* Base RangeSlider component */}
+            <RangeSlider
+              aria-label={['min', 'max']}
+              min={minTimestamp}
+              max={maxTimestamp}
+              step={(maxTimestamp - minTimestamp) / 500}
+              value={currentTimeRange}
+              onChange={(val: [number, number]) => {
+                // Clamp to min/max
+                let [start, end] = val;
+                start = Math.max(minTimestamp, Math.min(start, maxTimestamp));
+                end = Math.max(minTimestamp, Math.min(end, maxTimestamp));
+                if (start < end) {
+                  setCurrentTimeRange([start, end]);
+                  debouncedUpdateTimeRange(start, end);
+                } else {
+                  console.log('TimeSlider: Ignoring invalid slider values');
+                }
+              }}
+              isDisabled={isLoading || isPlaying}
+            >
+              <RangeSliderTrack>
+                <RangeSliderFilledTrack />
+              </RangeSliderTrack>
+              <RangeSliderThumb index={0} zIndex={2} />
+              <RangeSliderThumb index={1} zIndex={2} />
+            </RangeSlider>
+            
+            {/* Separate overlay for the draggable center area */}
+            <Box
+              position="absolute"
+              top="0"
+              left={`${((currentTimeRange[0] - minTimestamp) / (maxTimestamp - minTimestamp)) * 100}%`}
+              width={`${((currentTimeRange[1] - currentTimeRange[0]) / (maxTimestamp - minTimestamp)) * 100}%`}
+              height="100%"
+              backgroundColor="rgba(66, 153, 225, 0.2)"
+              cursor={isLoading || isPlaying ? "not-allowed" : "grab"}
+              _hover={{ backgroundColor: "rgba(66, 153, 225, 0.3)" }}
+              _active={{ cursor: "grabbing", backgroundColor: "rgba(66, 153, 225, 0.5)" }}
+              zIndex={10}
+              onMouseDown={!isLoading && !isPlaying ? handleCenterDragStart : undefined}
+              style={{ pointerEvents: isLoading || isPlaying ? 'none' : 'auto' }}
+              data-testid="center-drag-area"
+            >
+              {/* Visual indicator for the drag handle */}
+              <Flex 
+                height="100%" 
+                alignItems="center" 
+                justifyContent="center"
+                pointerEvents="none"
+              >
+                <Box 
+                  width="24px" 
+                  height="12px" 
+                  borderRadius="sm"
+                  border="2px solid"
+                  borderColor="blue.500"
+                  backgroundColor="blue.100"
+                  display="flex"
+                  flexDirection="column"
+                  justifyContent="center"
+                  alignItems="center"
+                  opacity={isLoading || isPlaying ? 0.3 : 0.8}
+                >
+                  <Box width="12px" height="1px" backgroundColor="blue.700" mb="2px" />
+                  <Box width="12px" height="1px" backgroundColor="blue.700" />
+                </Box>
+              </Flex>
+            </Box>
+          </Box>
           <Text fontSize="xs" minW="140px" textAlign="center">{formatTimestamp(currentTimeRange[1])}</Text>
         </HStack>
       </VStack>
@@ -647,3 +771,32 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ onTimeRangeChange }: TimeSlider
 };
 
 export default TimeSlider;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

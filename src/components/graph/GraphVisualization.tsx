@@ -6,6 +6,8 @@ import { Box, Spinner, Text, useToast, IconButton, Tooltip, HStack, Select, Form
 import { FaCog, FaBolt } from 'react-icons/fa';
 import cytoscape from 'cytoscape'; // Import core cytoscape
 
+// If you see a missing type error for 'react-cytoscapejs', add a declaration file or use: declare module 'react-cytoscapejs';
+
 // Define the structure of the elements expected by Cytoscape
 interface CytoscapeElement {
   data: { id: string; label?: string; type?: string; riskLevel?: 'High' | 'Medium' | 'Low'; timestamp?: number; [key: string]: any };
@@ -15,9 +17,65 @@ interface CytoscapeElement {
 interface GraphVisualizationProps {
   startTime: number; // Timestamp in milliseconds
   endTime: number;   // Timestamp in milliseconds
+  onDataRangeChange?: (min: number, max: number) => void;
 }
 
-const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime }) => {
+// Helper to normalize elements for Cytoscape
+function normalizeElements(elements: cytoscape.ElementDefinition[]) {
+  // First, collect all valid node IDs
+  const nodeIds = new Set(
+    elements
+      .filter(el => el.group === 'nodes' && el.data && el.data.id != null && el.data.id !== '')
+      .map(el => String(el.data.id))
+  );
+
+  // Now, filter and normalize nodes and edges
+  return elements
+    .filter(el => {
+      if (el.group === 'nodes') {
+        return el.data && el.data.id != null && el.data.id !== '';
+      }
+      if (el.group === 'edges') {
+        return (
+          el.data &&
+          el.data.id != null &&
+          el.data.id !== '' &&
+          el.data.source != null &&
+          el.data.target != null &&
+          el.data.source !== '' &&
+          el.data.target !== '' &&
+          nodeIds.has(String(el.data.source)) &&
+          nodeIds.has(String(el.data.target))
+        );
+      }
+      return false;
+    })
+    .map(el => {
+      if (el.group === 'nodes') {
+        return {
+          ...el,
+          data: {
+            ...el.data,
+            id: String(el.data.id),
+          }
+        };
+      }
+      if (el.group === 'edges') {
+        return {
+          ...el,
+          data: {
+            ...el.data,
+            id: String(el.data.id),
+            source: String(el.data.source),
+            target: String(el.data.target),
+          }
+        };
+      }
+      return el;
+    });
+}
+
+const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime, onDataRangeChange }) => {
   // Default safe values
   const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
   const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
@@ -106,9 +164,39 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         setAllElements([]);
         setInitialDataFetched(false);
       } else {
+        // Sort elements to ensure nodes come before edges
+        const sortedElements = [...data.elements].sort((a, b) => {
+          // Put nodes before edges
+          if (a.group === 'nodes' && b.group === 'edges') return -1;
+          if (a.group === 'edges' && b.group === 'nodes') return 1;
+          return 0;
+        });
+
         // Store all elements from the API
-        setAllElements(data.elements);
+        setAllElements(sortedElements);
         setInitialDataFetched(true);
+
+        // Compute min/max timestamp from all elements
+        let minTimestamp = Infinity;
+        let maxTimestamp = -Infinity;
+        for (const el of sortedElements) {
+          if (el.data && el.data.timestamp) {
+            const ts = typeof el.data.timestamp === 'number' ? el.data.timestamp : new Date(el.data.timestamp).getTime();
+            if (!isNaN(ts)) {
+              if (ts < minTimestamp) minTimestamp = ts;
+              if (ts > maxTimestamp) maxTimestamp = ts;
+            }
+          }
+        }
+        // If no valid timestamps, use safe defaults
+        if (!isFinite(minTimestamp) || !isFinite(maxTimestamp)) {
+          minTimestamp = new Date('2023-12-30T00:00:00.000Z').getTime();
+          maxTimestamp = new Date('2023-12-31T23:59:59.999Z').getTime();
+        }
+        // Call the callback if provided
+        if (onDataRangeChange) {
+          onDataRangeChange(minTimestamp, maxTimestamp);
+        }
       }
     } catch (e: any) {
       console.error("Failed to fetch all graph data:", e);
@@ -125,7 +213,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     } finally {
       setLoading(false);
     }
-  }, [toast]); // Only include toast in dependencies
+  }, [toast, onDataRangeChange]); // Only include toast in dependencies
 
   // Filter data locally based on time range
   const filterDataByTimeRange = useCallback((start: number, end: number) => {
@@ -146,17 +234,45 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
     console.log(`Filtering data for time range: ${new Date(start).toISOString()} - ${new Date(end).toISOString()}`);
 
-    // Filter elements based on timestamp
-    const filteredElements = allElements.filter(el => {
-      const timestamp = el.data.timestamp;
-      if (!timestamp) return true; // Include elements without timestamp
+    try {
+      // First, filter nodes based on timestamp and ensure valid string IDs
+      const filteredNodes = allElements.filter(el => {
+        if (el.group !== 'nodes') return false;
+        if (!el.data || el.data.id == null || el.data.id === '') return false;
+        const timestamp = el.data.timestamp;
+        if (!timestamp) return true; // Include nodes without timestamp
+        const elementTime = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+        return elementTime >= start && elementTime <= end;
+      });
 
-      const elementTime = new Date(timestamp).getTime();
-      return elementTime >= start && elementTime <= end;
-    });
+      // Get the IDs of all filtered nodes (as strings)
+      const nodeIds = new Set(filteredNodes.map(node => String(node.data.id)));
 
-    console.log(`Filtered ${filteredElements.length} elements from ${allElements.length} total elements`);
-    setElements(filteredElements);
+      // Then, filter edges where both source and target nodes are in the filtered set, and all IDs are valid
+      const filteredEdges = allElements.filter(el => {
+        if (el.group !== 'edges') return false;
+        if (!el.data || el.data.id == null || el.data.id === '' || el.data.source == null || el.data.target == null || el.data.source === '' || el.data.target === '') return false;
+        // Always convert to string for comparison
+        const sourceExists = nodeIds.has(String(el.data.source));
+        const targetExists = nodeIds.has(String(el.data.target));
+        if (!sourceExists || !targetExists) return false;
+        // Then check timestamp if it exists
+        const timestamp = el.data.timestamp;
+        if (!timestamp) return true; // Include edges without timestamp if nodes exist
+        const elementTime = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+        return elementTime >= start && elementTime <= end;
+      });
+
+      // Combine nodes and edges, with nodes first to ensure proper rendering
+      const filteredElements = [...filteredNodes, ...filteredEdges];
+
+      console.log(`Filtered ${filteredElements.length} elements (${filteredNodes.length} nodes, ${filteredEdges.length} edges) from ${allElements.length} total elements`);
+      setElements(filteredElements);
+    } catch (error) {
+      console.error('Error filtering data:', error);
+      // In case of error, use empty array to avoid crashes
+      setElements([]);
+    }
   }, [allElements, lastFetchParams]);
 
   // Fallback: fetch data for a specific time range if all data fetch fails
@@ -276,7 +392,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   }, [startTime, endTime, initialDataFetched, filterDataByTimeRange, safeStartTime, safeCurrentTime]);
 
   // Enhanced stylesheet (keep as is)
-  const stylesheet: cytoscape.Stylesheet[] = [
+  const stylesheet: any[] = [
     {
       selector: 'node',
       style: {
@@ -497,124 +613,180 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   useEffect(() => {
     if (!elements.length && !currentElements.length) return;
 
-    // Find elements to add (in elements but not in currentElements)
-    const elementsToAdd = elements.filter(newEl =>
-      !currentElements.some(curEl =>
-        curEl.data.id === newEl.data.id
-      )
-    );
+    try {
+      // Find elements to add (in elements but not in currentElements)
+      const elementsToAdd = elements.filter(newEl =>
+        !currentElements.some(curEl =>
+          curEl.data.id === newEl.data.id
+        )
+      );
 
-    // Find elements to remove (in currentElements but not in elements)
-    const elementsToRemove = currentElements.filter(curEl =>
-      !elements.some(newEl =>
-        newEl.data.id === curEl.data.id
-      )
-    );
+      // Find elements to remove (in currentElements but not in elements)
+      const elementsToRemove = currentElements.filter(curEl =>
+        !elements.some(newEl =>
+          newEl.data.id === curEl.data.id
+        )
+      );
 
-    if (elementsToAdd.length === 0 && elementsToRemove.length === 0) {
-      return; // No changes needed
-    }
+      if (elementsToAdd.length === 0 && elementsToRemove.length === 0) {
+        return; // No changes needed
+      }
 
-    console.log(`Transitioning: Adding ${elementsToAdd.length} elements, removing ${elementsToRemove.length} elements with speed ${transitionSpeed}ms`);
+      console.log(`Transitioning: Adding ${elementsToAdd.length} elements, removing ${elementsToRemove.length} elements with speed ${transitionSpeed}ms`);
 
-    if (!animationEnabled) {
-      // If animations disabled, update immediately
-      setCurrentElements(elements);
-      return;
-    }
+      // Sort elements to add so nodes come before edges
+      const sortedElementsToAdd = [...elementsToAdd].sort((a, b) => {
+        // Put nodes before edges
+        if (a.group === 'nodes' && b.group === 'edges') return -1;
+        if (a.group === 'edges' && b.group === 'nodes') return 1;
+        return 0;
+      });
 
-    // First remove elements with animation
-    if (elementsToRemove.length > 0) {
-      const cy = cyRef.current;
-      if (cy) {
-        // Find elements to remove in the graph
-        const elsToRemove = cy.elements().filter(el =>
-          elementsToRemove.some(remEl => remEl.data.id === el.id())
-        );
+      // Sort elements to remove so edges come before nodes
+      const sortedElementsToRemove = [...elementsToRemove].sort((a, b) => {
+        // Put edges before nodes (remove edges first)
+        if (a.group === 'edges' && b.group === 'nodes') return -1;
+        if (a.group === 'nodes' && b.group === 'edges') return 1;
+        return 0;
+      });
 
-        if (elsToRemove.length > 0) {
-          // Animate opacity before removing
-          elsToRemove.animate({
-            style: { 'opacity': 0 },
-            duration: transitionSpeed,
-            easing: 'ease-out'
-          }, {
-            complete: () => {
-              // After fade out, update the current elements by removing these elements
+      if (!animationEnabled) {
+        // If animations disabled, update immediately
+        setCurrentElements(elements);
+        return;
+      }
+
+      // First remove elements with animation
+      if (sortedElementsToRemove.length > 0) {
+        const cy = cyRef.current;
+        if (cy) {
+          try {
+            // Find elements to remove in the graph
+            // Remove edges first, then nodes to avoid the "nonexistent source" error
+            const edgesToRemove = cy.edges().filter(el =>
+              sortedElementsToRemove.some(remEl => remEl.data.id === el.id() && remEl.group === 'edges')
+            );
+
+            const nodesToRemove = cy.nodes().filter(el =>
+              sortedElementsToRemove.some(remEl => remEl.data.id === el.id() && remEl.group === 'nodes')
+            );
+
+            // Combine them with edges first for removal
+            const elsToRemove = edgesToRemove.union(nodesToRemove);
+
+            if (elsToRemove.length > 0) {
+              // Animate opacity before removing
+              elsToRemove.animate({
+                style: { 'opacity': 0 },
+                duration: transitionSpeed,
+                easing: 'ease-out'
+              }, {
+                complete: () => {
+                  try {
+                    // After fade out, update the current elements by removing these elements
+                    setCurrentElements(currentElements.filter(curEl =>
+                      !sortedElementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
+                    ));
+
+                    // Then add new elements after a short delay
+                    if (sortedElementsToAdd.length > 0) {
+                      setTimeout(() => {
+                        setCurrentElements(prev => [...prev, ...sortedElementsToAdd]);
+
+                        // After elements are added, animate them in
+                        setTimeout(() => {
+                          const cy = cyRef.current;
+                          if (cy) {
+                            try {
+                              // Find the newly added elements
+                              const newEls = cy.elements().filter(el =>
+                                sortedElementsToAdd.some(addEl => addEl.data.id === el.id())
+                              );
+
+                              if (newEls.length > 0) {
+                                // Start with opacity 0
+                                newEls.style({ 'opacity': 0 });
+
+                                // Animate the entrance
+                                newEls.animate({
+                                  style: { 'opacity': 1 },
+                                  duration: transitionSpeed,
+                                  easing: 'ease-in'
+                                });
+                              }
+                            } catch (error) {
+                              console.error("Error animating new elements:", error);
+                            }
+                          }
+                        }, 50);
+                      }, Math.min(100, transitionSpeed / 5));
+                    }
+                  } catch (error) {
+                    console.error("Error in animation complete callback:", error);
+                    // Fallback: just set the elements directly
+                    setCurrentElements(elements);
+                  }
+                }
+              });
+            } else {
+              // If we couldn't find the elements to remove in the graph, just update the state
               setCurrentElements(currentElements.filter(curEl =>
-                !elementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
+                !sortedElementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
               ));
 
-              // Then add new elements after a short delay
-              if (elementsToAdd.length > 0) {
+              if (sortedElementsToAdd.length > 0) {
                 setTimeout(() => {
-                  setCurrentElements(prev => [...prev, ...elementsToAdd]);
-
-                  // After elements are added, animate them in
-                  setTimeout(() => {
-                    const cy = cyRef.current;
-                    if (cy) {
-                      // Find the newly added elements
-                      const newEls = cy.elements().filter(el =>
-                        elementsToAdd.some(addEl => addEl.data.id === el.id())
-                      );
-
-                      if (newEls.length > 0) {
-                        // Start with opacity 0
-                        newEls.style({ 'opacity': 0 });
-
-                        // Animate the entrance
-                        newEls.animate({
-                          style: { 'opacity': 1 },
-                          duration: transitionSpeed,
-                          easing: 'ease-in'
-                        });
-                      }
-                    }
-                  }, 50);
+                  setCurrentElements(prev => [...prev, ...sortedElementsToAdd]);
                 }, Math.min(100, transitionSpeed / 5));
               }
             }
-          });
-        } else {
-          // If we couldn't find the elements to remove in the graph, just update the state
-          setCurrentElements(currentElements.filter(curEl =>
-            !elementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
-          ));
-
-          if (elementsToAdd.length > 0) {
-            setTimeout(() => {
-              setCurrentElements(prev => [...prev, ...elementsToAdd]);
-            }, Math.min(100, transitionSpeed / 5));
+          } catch (error) {
+            console.error("Error during element removal:", error);
+            // Fallback: just set the elements directly
+            setCurrentElements(elements);
           }
+        }
+      } else if (sortedElementsToAdd.length > 0) {
+        try {
+          // If only adding elements (no removals), add them directly
+          setCurrentElements(prev => [...prev, ...sortedElementsToAdd]);
+
+          // After a short delay, animate the new elements
+          setTimeout(() => {
+            const cy = cyRef.current;
+            if (cy) {
+              try {
+                // Find the newly added elements
+                const newEls = cy.elements().filter(el =>
+                  sortedElementsToAdd.some(addEl => addEl.data.id === el.id())
+                );
+
+                if (newEls.length > 0) {
+                  // Start with opacity 0 and fade in
+                  newEls.style({ 'opacity': 0 });
+
+                  // Animate the entrance
+                  newEls.animate({
+                    style: { 'opacity': 1 },
+                    duration: transitionSpeed,
+                    easing: 'ease-in'
+                  });
+                }
+              } catch (error) {
+                console.error("Error animating new elements:", error);
+              }
+            }
+          }, 50);
+        } catch (error) {
+          console.error("Error adding elements:", error);
+          // Fallback: just set the elements directly
+          setCurrentElements(elements);
         }
       }
-    } else if (elementsToAdd.length > 0) {
-      // If only adding elements (no removals), add them directly
-      setCurrentElements(prev => [...prev, ...elementsToAdd]);
-
-      // After a short delay, animate the new elements
-      setTimeout(() => {
-        const cy = cyRef.current;
-        if (cy) {
-          // Find the newly added elements
-          const newEls = cy.elements().filter(el =>
-            elementsToAdd.some(addEl => addEl.data.id === el.id())
-          );
-
-          if (newEls.length > 0) {
-            // Start with opacity 0 and fade in
-            newEls.style({ 'opacity': 0 });
-
-            // Animate the entrance
-            newEls.animate({
-              style: { 'opacity': 1 },
-              duration: transitionSpeed,
-              easing: 'ease-in'
-            });
-          }
-        }
-      }, 50);
+    } catch (error) {
+      console.error("Error in transition effect:", error);
+      // Fallback: just set the elements directly
+      setCurrentElements(elements);
     }
   }, [elements, currentElements, animationEnabled, transitionSpeed]);
 
@@ -659,7 +831,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     applyStoredPositions();
 
     // Run layout with animation settings
-    const hasNewNodes = cy.nodes().some(node => !nodePositionsRef.current[node.id()]);
+    const hasNewNodes = cy.nodes().some(node => !nodePositionsRef.current[(node as cytoscape.NodeSingular).id()]);
 
     if (hasNewNodes || cy.nodes().length === 0) {
       const layoutOptions = {
@@ -808,11 +980,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       </Box>
 
       <CytoscapeComponent
-        elements={CytoscapeComponent.normalizeElements(currentElements)}
+        elements={normalizeElements(currentElements)}
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
         layout={layoutConfig}
-        cy={(cy) => { cyRef.current = cy; }}
+        cy={(cy: cytoscape.Core) => { cyRef.current = cy; }}
         minZoom={0.2}
         maxZoom={2.5}
       />

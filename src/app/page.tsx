@@ -18,6 +18,10 @@ export default function Home() {
   const [startTime, setStartTime] = useState<number>(safeStartTime);
   const [endTime, setEndTime] = useState<number>(safeCurrentTime);
 
+  // State for min/max timestamp in the dataset
+  const [minTimestamp, setMinTimestamp] = useState<number>(safeStartTime);
+  const [maxTimestamp, setMaxTimestamp] = useState<number>(safeCurrentTime);
+
   // Callback function for the TimeSlider to update the time range
   // Using useCallback to ensure the function reference remains stable
   const handleTimeRangeChange = useCallback((start: number, end: number) => {
@@ -61,6 +65,15 @@ export default function Home() {
     setEndTime(safeEnd);
   }, []);
 
+  // Callback to receive min/max from GraphVisualization
+  const handleDataRangeChange = useCallback((min: number, max: number) => {
+    setMinTimestamp(min);
+    setMaxTimestamp(max);
+    // Optionally, clamp current time range if out of bounds
+    setStartTime(prev => Math.max(min, Math.min(prev, max)));
+    setEndTime(prev => Math.max(min, Math.min(prev, max)));
+  }, []);
+
   return (
     <Box p={5}>
       <VStack spacing={6} align="stretch">
@@ -92,7 +105,11 @@ export default function Home() {
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Timeline View</Heading>
           <Text mb={4} color="gray.500">Filter the graph visualization based on the selected time range.</Text>
-          <TimeSlider onTimeRangeChange={handleTimeRangeChange} />
+          <TimeSlider
+            minTimestamp={minTimestamp}
+            maxTimestamp={maxTimestamp}
+            onTimeRangeChange={handleTimeRangeChange}
+          />
         </Box>
 
         <Divider />
@@ -102,7 +119,11 @@ export default function Home() {
           <Heading size="md" mb={3}>Interactive Graph Visualization</Heading>
           <Text mb={4} color="gray.500">Explore connections and entities within the selected time range. Click and drag nodes, zoom, and pan.</Text>
           {/* Pass startTime and endTime to GraphVisualization */}
-          <GraphVisualization startTime={startTime} endTime={endTime} />
+          <GraphVisualization
+            startTime={startTime}
+            endTime={endTime}
+            onDataRangeChange={handleDataRangeChange}
+          />
         </Box>
 
         <Divider />
