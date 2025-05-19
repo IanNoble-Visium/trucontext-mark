@@ -614,173 +614,58 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     if (!elements.length && !currentElements.length) return;
 
     try {
-      // Find elements to add (in elements but not in currentElements)
-      const elementsToAdd = elements.filter(newEl =>
-        !currentElements.some(curEl =>
-          curEl.data.id === newEl.data.id
-        )
+      // Compare current and new elements to determine what changed
+      const elementsToAdd = elements.filter(el => 
+        !currentElements.some(curEl => curEl.data.id === el.data.id)
+      );
+      
+      const elementsToRemove = currentElements.filter(curEl => 
+        !elements.some(el => el.data.id === curEl.data.id)
       );
 
-      // Find elements to remove (in currentElements but not in elements)
-      const elementsToRemove = currentElements.filter(curEl =>
-        !elements.some(newEl =>
-          newEl.data.id === curEl.data.id
-        )
-      );
+      // Sort elements to ensure edges are processed after nodes when adding
+      // and before nodes when removing to prevent reference errors
+      const sortedElementsToAdd = [
+        ...elementsToAdd.filter(el => el.group === 'nodes'),
+        ...elementsToAdd.filter(el => el.group === 'edges')
+      ];
 
-      if (elementsToAdd.length === 0 && elementsToRemove.length === 0) {
-        return; // No changes needed
-      }
+      const sortedElementsToRemove = [
+        ...elementsToRemove.filter(el => el.group === 'edges'),
+        ...elementsToRemove.filter(el => el.group === 'nodes')
+      ];
 
-      console.log(`Transitioning: Adding ${elementsToAdd.length} elements, removing ${elementsToRemove.length} elements with speed ${transitionSpeed}ms`);
+      // For real-time updates, use a shorter transition duration during active dragging
+      const effectiveTransitionSpeed = Math.min(transitionSpeed, 200);
 
-      // Sort elements to add so nodes come before edges
-      const sortedElementsToAdd = [...elementsToAdd].sort((a, b) => {
-        // Put nodes before edges
-        if (a.group === 'nodes' && b.group === 'edges') return -1;
-        if (a.group === 'edges' && b.group === 'nodes') return 1;
-        return 0;
-      });
-
-      // Sort elements to remove so edges come before nodes
-      const sortedElementsToRemove = [...elementsToRemove].sort((a, b) => {
-        // Put edges before nodes (remove edges first)
-        if (a.group === 'edges' && b.group === 'nodes') return -1;
-        if (a.group === 'nodes' && b.group === 'edges') return 1;
-        return 0;
-      });
-
-      if (!animationEnabled) {
-        // If animations disabled, update immediately
+      // Process updates immediately
+      if (sortedElementsToRemove.length > 0 || sortedElementsToAdd.length > 0) {
+        // Update the elements state immediately
         setCurrentElements(elements);
-        return;
-      }
-
-      // First remove elements with animation
-      if (sortedElementsToRemove.length > 0) {
+        
+        // Apply animations to the updated elements
         const cy = cyRef.current;
-        if (cy) {
+        if (cy && animationEnabled) {
           try {
-            // Find elements to remove in the graph
-            // Remove edges first, then nodes to avoid the "nonexistent source" error
-            const edgesToRemove = cy.edges().filter(el =>
-              sortedElementsToRemove.some(remEl => remEl.data.id === el.id() && remEl.group === 'edges')
+            // Find newly added elements
+            const newEls = cy.elements().filter(el =>
+              sortedElementsToAdd.some(addEl => addEl.data.id === el.id())
             );
 
-            const nodesToRemove = cy.nodes().filter(el =>
-              sortedElementsToRemove.some(remEl => remEl.data.id === el.id() && remEl.group === 'nodes')
-            );
-
-            // Combine them with edges first for removal
-            const elsToRemove = edgesToRemove.union(nodesToRemove);
-
-            if (elsToRemove.length > 0) {
-              // Animate opacity before removing
-              elsToRemove.animate({
-                style: { 'opacity': 0 },
-                duration: transitionSpeed,
-                easing: 'ease-out'
-              }, {
-                complete: () => {
-                  try {
-                    // After fade out, update the current elements by removing these elements
-                    setCurrentElements(currentElements.filter(curEl =>
-                      !sortedElementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
-                    ));
-
-                    // Then add new elements after a short delay
-                    if (sortedElementsToAdd.length > 0) {
-                      setTimeout(() => {
-                        setCurrentElements(prev => [...prev, ...sortedElementsToAdd]);
-
-                        // After elements are added, animate them in
-                        setTimeout(() => {
-                          const cy = cyRef.current;
-                          if (cy) {
-                            try {
-                              // Find the newly added elements
-                              const newEls = cy.elements().filter(el =>
-                                sortedElementsToAdd.some(addEl => addEl.data.id === el.id())
-                              );
-
-                              if (newEls.length > 0) {
-                                // Start with opacity 0
-                                newEls.style({ 'opacity': 0 });
-
-                                // Animate the entrance
-                                newEls.animate({
-                                  style: { 'opacity': 1 },
-                                  duration: transitionSpeed,
-                                  easing: 'ease-in'
-                                });
-                              }
-                            } catch (error) {
-                              console.error("Error animating new elements:", error);
-                            }
-                          }
-                        }, 50);
-                      }, Math.min(100, transitionSpeed / 5));
-                    }
-                  } catch (error) {
-                    console.error("Error in animation complete callback:", error);
-                    // Fallback: just set the elements directly
-                    setCurrentElements(elements);
-                  }
-                }
+            if (newEls.length > 0) {
+              // Start with opacity 0 and fade in
+              newEls.style({ 'opacity': 0 });
+              
+              // Animate the entrance with the effective transition speed
+              newEls.animate({
+                style: { 'opacity': 1 },
+                duration: effectiveTransitionSpeed,
+                easing: 'ease-in'
               });
-            } else {
-              // If we couldn't find the elements to remove in the graph, just update the state
-              setCurrentElements(currentElements.filter(curEl =>
-                !sortedElementsToRemove.some(remEl => remEl.data.id === curEl.data.id)
-              ));
-
-              if (sortedElementsToAdd.length > 0) {
-                setTimeout(() => {
-                  setCurrentElements(prev => [...prev, ...sortedElementsToAdd]);
-                }, Math.min(100, transitionSpeed / 5));
-              }
             }
           } catch (error) {
-            console.error("Error during element removal:", error);
-            // Fallback: just set the elements directly
-            setCurrentElements(elements);
+            console.error("Error animating elements:", error);
           }
-        }
-      } else if (sortedElementsToAdd.length > 0) {
-        try {
-          // If only adding elements (no removals), add them directly
-          setCurrentElements(prev => [...prev, ...sortedElementsToAdd]);
-
-          // After a short delay, animate the new elements
-          setTimeout(() => {
-            const cy = cyRef.current;
-            if (cy) {
-              try {
-                // Find the newly added elements
-                const newEls = cy.elements().filter(el =>
-                  sortedElementsToAdd.some(addEl => addEl.data.id === el.id())
-                );
-
-                if (newEls.length > 0) {
-                  // Start with opacity 0 and fade in
-                  newEls.style({ 'opacity': 0 });
-
-                  // Animate the entrance
-                  newEls.animate({
-                    style: { 'opacity': 1 },
-                    duration: transitionSpeed,
-                    easing: 'ease-in'
-                  });
-                }
-              } catch (error) {
-                console.error("Error animating new elements:", error);
-              }
-            }
-          }, 50);
-        } catch (error) {
-          console.error("Error adding elements:", error);
-          // Fallback: just set the elements directly
-          setCurrentElements(elements);
         }
       }
     } catch (error) {
@@ -789,6 +674,24 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       setCurrentElements(elements);
     }
   }, [elements, currentElements, animationEnabled, transitionSpeed]);
+
+  // Add a listener for active dragging state from TimeSlider
+  useEffect(() => {
+    const handleDragStateChange = (event: CustomEvent) => {
+      if (event.detail && typeof event.detail.isDragging === 'boolean') {
+        // Could use this to further optimize transitions during active dragging
+        console.log(`GraphVisualization: Received drag state change: ${event.detail.isDragging}`);
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('timelinedragstate', handleDragStateChange as EventListener);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('timelinedragstate', handleDragStateChange as EventListener);
+    };
+  }, []);
 
   // Listen for transition speed change events from TimeSlider
   useEffect(() => {
@@ -993,3 +896,4 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 };
 
 export default GraphVisualization;
+

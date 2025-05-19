@@ -217,9 +217,10 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
       clearTimeout(timeoutRef.current);
     }
 
+    // Use a much shorter delay (50ms) for a more responsive feel while still preventing excessive updates
     timeoutRef.current = setTimeout(() => {
       updateTimeRange(start, end);
-    }, 1000); // 1 second debounce
+    }, 50); // Reduced from 1000ms to 50ms for near real-time updates
   }, [updateTimeRange]);
 
   // Animation logic with speed control
@@ -453,6 +454,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
     newStart = Math.max(minTimestamp, Math.min(newStart, maxTimestamp - originalDuration));
     newEnd = Math.max(minTimestamp + originalDuration, Math.min(newEnd, maxTimestamp));
     setCurrentTimeRange([newStart, newEnd]);
+    // Call update immediately without debounce for drag movements
     updateTimeRange(newStart, newEnd);
   }, [minTimestamp, maxTimestamp, updateTimeRange]);
   dragMoveHandler.current = handleCenterDragMove;
@@ -474,6 +476,18 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
       const finalStart = currentTimeRange[0];
       const finalEnd = currentTimeRange[1];
       console.log(`Drag completed: ${new Date(finalStart).toISOString()} - ${new Date(finalEnd).toISOString()}`);
+      
+      // Dispatch drag end event
+      try {
+        const event = new CustomEvent('timelinedragstate', {
+          detail: { isDragging: false },
+          bubbles: true,
+          cancelable: true
+        });
+        window.dispatchEvent(event);
+      } catch (error) {
+        console.error('Error dispatching drag state event:', error);
+      }
     }
   }, [currentTimeRange]);
   dragEndHandler.current = handleCenterDragEnd;
@@ -500,6 +514,18 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
     document.addEventListener('mousemove', dragMoveHandler.current!, true);
     document.addEventListener('mouseup', dragEndHandler.current!, true);
     console.log(`Drag started: ${new Date(exactStart).toISOString()} - ${new Date(exactEnd).toISOString()}`);
+    
+    // Dispatch drag state event
+    try {
+      const event = new CustomEvent('timelinedragstate', {
+        detail: { isDragging: true },
+        bubbles: true,
+        cancelable: true
+      });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('Error dispatching drag state event:', error);
+    }
   }, [isLoading, isPlaying, currentTimeRange]);
 
   // Add stronger style elements to ensure dragging behavior works properly
@@ -707,7 +733,8 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
                 end = Math.max(minTimestamp, Math.min(end, maxTimestamp));
                 if (start < end) {
                   setCurrentTimeRange([start, end]);
-                  debouncedUpdateTimeRange(start, end);
+                  // Call update immediately without debounce for slider movements
+                  updateTimeRange(start, end);
                 } else {
                   console.log('TimeSlider: Ignoring invalid slider values');
                 }
@@ -771,6 +798,8 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
 };
 
 export default TimeSlider;
+
+
 
 
 
