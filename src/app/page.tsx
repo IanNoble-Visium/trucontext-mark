@@ -2,8 +2,13 @@
 
 import { useState, useCallback } from "react";
 import { Box, Heading, Text, VStack, Divider } from "@chakra-ui/react";
-import GraphVisualization from "@/components/graph/GraphVisualization"; // Adjust path if needed
-import GeoMap from "@/components/graph/GeoMap";
+import dynamic from "next/dynamic";
+
+const GraphVisualization = dynamic(
+  () => import("@/components/graph/GraphVisualization"),
+  { ssr: false }
+);
+const GeoMap = dynamic(() => import("@/components/graph/GeoMap"), { ssr: false });
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import KpiSummary from "@/components/dashboard/KpiSummary"; // Adjust path if needed
 import AlertsList from "@/components/dashboard/AlertsList"; // Adjust path if needed
