@@ -2,12 +2,15 @@
 
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import { useEffect, useState } from "react";
+import { Icon } from "leaflet";
+import { getIconPath } from "@/lib/iconUtils";
 
 interface GraphNode {
   id: string;
   label?: string;
   latitude: number;
   longitude: number;
+  icon: string;
 }
 
 const boundingBoxes = [
@@ -40,11 +43,12 @@ export default function GeoMap() {
         const mapped: GraphNode[] = rawNodes.map((n: any) => {
           const lat = parseFloat(n.data?.latitude ?? n.data?.lat);
           const lon = parseFloat(n.data?.longitude ?? n.data?.lon);
+          const icon = getIconPath(n.data?.type);
           if (isNaN(lat) || isNaN(lon)) {
             const coords = randomCoords();
-            return { id: String(n.data?.id), label: n.data?.label, ...coords };
+            return { id: String(n.data?.id), label: n.data?.label, icon, ...coords };
           }
-          return { id: String(n.data?.id), label: n.data?.label, latitude: lat, longitude: lon };
+          return { id: String(n.data?.id), label: n.data?.label, latitude: lat, longitude: lon, icon };
         });
 
         setNodes(mapped);
@@ -60,7 +64,11 @@ export default function GeoMap() {
     <MapContainer center={[20, 0]} zoom={2} style={{ height: "600px", width: "100%" }}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       {nodes.map((n) => (
-        <Marker key={n.id} position={[n.latitude, n.longitude]}>
+        <Marker
+          key={n.id}
+          position={[n.latitude, n.longitude]}
+          icon={new Icon({ iconUrl: n.icon, iconSize: [32, 32], iconAnchor: [16, 16] })}
+        >
           <Popup>{n.label || n.id}</Popup>
         </Marker>
       ))}
