@@ -1,7 +1,18 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Box, Heading, Text, VStack, Divider } from "@chakra-ui/react";
+import { 
+  Box, 
+  Heading, 
+  Text, 
+  VStack, 
+  Divider,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel
+} from "@chakra-ui/react";
 import dynamic from "next/dynamic";
 
 const GraphVisualization = dynamic(
@@ -9,12 +20,11 @@ const GraphVisualization = dynamic(
   { ssr: false }
 );
 const GeoMap = dynamic(() => import("@/components/graph/GeoMap"), { ssr: false });
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import KpiSummary from "@/components/dashboard/KpiSummary"; // Adjust path if needed
-import AlertsList from "@/components/dashboard/AlertsList"; // Adjust path if needed
-import RiskList from "@/components/dashboard/RiskList"; // Adjust path if needed
-import DatasetUploader from "@/components/dashboard/DatasetUploader"; // Dataset uploader component
-import TimeSlider from "@/components/dashboard/TimeSlider"; // Import the TimeSlider component
+import KpiSummary from "@/components/dashboard/KpiSummary";
+import AlertsList from "@/components/dashboard/AlertsList";
+import RiskList from "@/components/dashboard/RiskList";
+import DatasetUploader from "@/components/dashboard/DatasetUploader";
+import TimeSlider from "@/components/dashboard/TimeSlider";
 
 export default function Home() {
   // Initialize with safe default values to prevent 0,0 issues
@@ -125,21 +135,28 @@ export default function Home() {
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Interactive Graph Visualization</Heading>
           <Text mb={4} color="gray.500">Explore connections and entities within the selected time range or view their geographic distribution.</Text>
-          <Tabs defaultValue="graph" className="w-full">
-            <TabsList>
-              <TabsTrigger value="graph">Graph</TabsTrigger>
-              <TabsTrigger value="map">Geo Map</TabsTrigger>
-            </TabsList>
-            <TabsContent value="graph">
-              <GraphVisualization
-                startTime={startTime}
-                endTime={endTime}
-                onDataRangeChange={handleDataRangeChange}
-              />
-            </TabsContent>
-            <TabsContent value="map">
-              <GeoMap />
-            </TabsContent>
+          
+          <Tabs variant="enclosed" colorScheme="blue" isFitted>
+            <TabList mb={4}>
+              <Tab fontWeight="semibold" _selected={{ color: 'blue.600', borderColor: 'blue.600', borderBottomColor: 'white' }}>
+                Graph Topology
+              </Tab>
+              <Tab fontWeight="semibold" _selected={{ color: 'blue.600', borderColor: 'blue.600', borderBottomColor: 'white' }}>
+                Geo Map
+              </Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel p={0} pt={4}>
+                <GraphVisualization
+                  startTime={startTime}
+                  endTime={endTime}
+                  onDataRangeChange={handleDataRangeChange}
+                />
+              </TabPanel>
+              <TabPanel p={0} pt={4}>
+                <GeoMap />
+              </TabPanel>
+            </TabPanels>
           </Tabs>
         </Box>
 

@@ -176,9 +176,18 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         // Add icon path for each node and store elements
         const enhanced = sortedElements.map(el => {
           if (el.group === 'nodes') {
+            // Ensure we're getting the icon path correctly
+            const iconPath = getIconPath(el.data?.type);
+            
+            // Add an error handler for the icon
             return {
               ...el,
-              data: { ...el.data, icon: getIconPath(el.data?.type) }
+              data: { 
+                ...el.data, 
+                icon: iconPath,
+                // Add a fallback icon in case the main one fails to load
+                fallbackIcon: '/icons/unknown.png'
+              }
             };
           }
           return el;
