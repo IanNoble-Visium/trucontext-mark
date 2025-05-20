@@ -10,7 +10,7 @@ import cytoscape from 'cytoscape'; // Import core cytoscape
 
 // Define the structure of the elements expected by Cytoscape
 interface CytoscapeElement {
-  data: { id: string; label?: string; type?: string; riskLevel?: 'High' | 'Medium' | 'Low'; timestamp?: number; [key: string]: any };
+  data: { id: string; label?: string; type?: string; riskLevel?: 'High' | 'Medium' | 'Low'; timestamp?: number; icon?: string; [key: string]: any };
   group: 'nodes' | 'edges';
 }
 
@@ -18,6 +18,11 @@ interface GraphVisualizationProps {
   startTime: number; // Timestamp in milliseconds
   endTime: number;   // Timestamp in milliseconds
   onDataRangeChange?: (min: number, max: number) => void;
+}
+
+function getIconForType(type?: string) {
+  if (!type) return '/icons/unknown.png';
+  return `/icons/${type.toLowerCase()}.png`;
 }
 
 // Helper to normalize elements for Cytoscape
@@ -73,6 +78,22 @@ function normalizeElements(elements: cytoscape.ElementDefinition[]) {
       }
       return el;
     });
+}
+
+function addIcons(elements: cytoscape.ElementDefinition[]) {
+  return elements.map(el => {
+    if (el.group === 'nodes') {
+      const type = el.data?.type as string | undefined;
+      return {
+        ...el,
+        data: {
+          ...el.data,
+          icon: getIconForType(type)
+        }
+      };
+    }
+    return el;
+  });
 }
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime, onDataRangeChange }) => {
@@ -172,8 +193,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           return 0;
         });
 
-        // Store all elements from the API
-        setAllElements(sortedElements);
+        // Add icon paths and store
+        setAllElements(addIcons(sortedElements));
         setInitialDataFetched(true);
 
         // Compute min/max timestamp from all elements
@@ -267,7 +288,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       const filteredElements = [...filteredNodes, ...filteredEdges];
 
       console.log(`Filtered ${filteredElements.length} elements (${filteredNodes.length} nodes, ${filteredEdges.length} edges) from ${allElements.length} total elements`);
-      setElements(filteredElements);
+      setElements(addIcons(filteredElements));
     } catch (error) {
       console.error('Error filtering data:', error);
       // In case of error, use empty array to avoid crashes
@@ -336,11 +357,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         setElements([]);
       } else {
         // Store all elements from the API
-        setElements(data.elements);
+        setElements(addIcons(data.elements));
 
         // Initialize current elements if empty
         if (currentElements.length === 0) {
-          setCurrentElements(data.elements);
+          setCurrentElements(addIcons(data.elements));
         }
       }
     } catch (e: any) {
@@ -397,6 +418,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       selector: 'node',
       style: {
         'background-color': '#666',
+        'background-image': 'data(icon)',
+        'background-fit': 'cover',
         'label': 'data(label)',
         'width': '30px',
         'height': '30px',

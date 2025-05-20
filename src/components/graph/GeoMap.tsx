@@ -2,10 +2,13 @@
 
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import { useEffect, useState } from "react";
+import L from "leaflet";
 
 interface GraphNode {
   id: string;
   label?: string;
+  type?: string;
+  icon?: string;
   latitude: number;
   longitude: number;
 }
@@ -40,11 +43,13 @@ export default function GeoMap() {
         const mapped: GraphNode[] = rawNodes.map((n: any) => {
           const lat = parseFloat(n.data?.latitude ?? n.data?.lat);
           const lon = parseFloat(n.data?.longitude ?? n.data?.lon);
+          const type = n.data?.type as string | undefined;
+          const icon = `/icons/${type ? type.toLowerCase() : 'unknown'}.png`;
           if (isNaN(lat) || isNaN(lon)) {
             const coords = randomCoords();
-            return { id: String(n.data?.id), label: n.data?.label, ...coords };
+            return { id: String(n.data?.id), label: n.data?.label, type, icon, ...coords };
           }
-          return { id: String(n.data?.id), label: n.data?.label, latitude: lat, longitude: lon };
+          return { id: String(n.data?.id), label: n.data?.label, type, icon, latitude: lat, longitude: lon };
         });
 
         setNodes(mapped);
@@ -59,11 +64,19 @@ export default function GeoMap() {
   return (
     <MapContainer center={[20, 0]} zoom={2} style={{ height: "600px", width: "100%" }}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      {nodes.map((n) => (
-        <Marker key={n.id} position={[n.latitude, n.longitude]}>
-          <Popup>{n.label || n.id}</Popup>
-        </Marker>
-      ))}
+      {nodes.map((n) => {
+        const icon = L.icon({
+          iconUrl: n.icon || '/icons/unknown.png',
+          iconSize: [24, 24],
+          iconAnchor: [12, 24],
+          popupAnchor: [0, -24],
+        });
+        return (
+          <Marker key={n.id} position={[n.latitude, n.longitude]} icon={icon}>
+            <Popup>{n.label || n.id}</Popup>
+          </Marker>
+        );
+      })}
     </MapContainer>
   );
 }
