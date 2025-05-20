@@ -3,6 +3,8 @@
 import { useState, useCallback } from "react";
 import { Box, Heading, Text, VStack, Divider } from "@chakra-ui/react";
 import GraphVisualization from "@/components/graph/GraphVisualization"; // Adjust path if needed
+import GeoMap from "@/components/graph/GeoMap";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import KpiSummary from "@/components/dashboard/KpiSummary"; // Adjust path if needed
 import AlertsList from "@/components/dashboard/AlertsList"; // Adjust path if needed
 import RiskList from "@/components/dashboard/RiskList"; // Adjust path if needed
@@ -114,16 +116,26 @@ export default function Home() {
 
         <Divider />
 
-        {/* Graph Visualization - Pass time range state */}
+        {/* Graph Visualization and Geo Map */}
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Interactive Graph Visualization</Heading>
-          <Text mb={4} color="gray.500">Explore connections and entities within the selected time range. Click and drag nodes, zoom, and pan.</Text>
-          {/* Pass startTime and endTime to GraphVisualization */}
-          <GraphVisualization
-            startTime={startTime}
-            endTime={endTime}
-            onDataRangeChange={handleDataRangeChange}
-          />
+          <Text mb={4} color="gray.500">Explore connections and entities within the selected time range or view their geographic distribution.</Text>
+          <Tabs defaultValue="graph" className="w-full">
+            <TabsList>
+              <TabsTrigger value="graph">Graph</TabsTrigger>
+              <TabsTrigger value="map">Geo Map</TabsTrigger>
+            </TabsList>
+            <TabsContent value="graph">
+              <GraphVisualization
+                startTime={startTime}
+                endTime={endTime}
+                onDataRangeChange={handleDataRangeChange}
+              />
+            </TabsContent>
+            <TabsContent value="map">
+              <GeoMap />
+            </TabsContent>
+          </Tabs>
         </Box>
 
         <Divider />
