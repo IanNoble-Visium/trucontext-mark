@@ -7,6 +7,7 @@ This is a Next.js application designed to visualize cyber threat intelligence da
 - **Framework:** Next.js (using App Router)
 - **UI Library:** Chakra UI
 - **Graph Visualization:** Cytoscape.js (via `react-cytoscapejs`)
+- **Geographic Map:** Leaflet (via `react-leaflet`)
 - **Database:** Neo4j (connected via `neo4j-driver`)
 - **Deployment:** Intended for Vercel via GitHub integration.
 
@@ -14,6 +15,7 @@ This is a Next.js application designed to visualize cyber threat intelligence da
 
 - **Executive Summary:** Displays key performance indicators (KPIs) related to cyber posture. (Currently uses mock data via `/api/kpis`)
 - **Interactive Graph Visualization:** Renders a graph of nodes and relationships fetched from Neo4j. Supports panning, zooming, node clicking/hovering, and basic styling based on node type/risk. (Fetches data via `/api/graph-data` - requires Neo4j connection)
+- **Geo Map:** Displays nodes on an interactive Leaflet map.
 - **Automated Alerts:** Lists recent alerts generated based on graph patterns. (Currently uses mock data via `/api/alerts`)
 - **Risk Prioritization:** Shows a table of assets/entities ranked by risk score. (Currently uses mock data via `/api/risk`)
 - **Timeline View:** Fully implemented interactive time slider for filtering the graph visualization by time range. Supports:
@@ -194,5 +196,6 @@ This application is designed for seamless deployment via Vercel's GitHub integra
 - **Robust Filtering:** The graph visualization now guarantees that only edges whose source and target nodes exist in the current node set are rendered, preventing Cytoscape errors during rapid slider movement or animation.
 - **Improved Drag & Animation:** The Timeline View supports smooth, continuous dragging of the time window, with robust handling of mouse events and state. Playback speed and transition speed are user-configurable.
 - **Error Handling:** Enhanced error handling and feedback for invalid time ranges, future/past date issues, and Neo4j connectivity problems.
+- **Geo Map Tab:** New tab alongside the graph visualization showing nodes on a Leaflet-powered map.
 
 
