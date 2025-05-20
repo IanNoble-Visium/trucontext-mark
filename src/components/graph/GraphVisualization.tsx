@@ -5,6 +5,7 @@ import CytoscapeComponent from 'react-cytoscapejs';
 import { Box, Spinner, Text, useToast, IconButton, Tooltip, HStack, Select, FormLabel } from '@chakra-ui/react';
 import { FaCog, FaBolt } from 'react-icons/fa';
 import cytoscape from 'cytoscape'; // Import core cytoscape
+import { getIconPath } from '@/lib/iconUtils';
 
 // If you see a missing type error for 'react-cytoscapejs', add a declaration file or use: declare module 'react-cytoscapejs';
 
@@ -172,8 +173,17 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           return 0;
         });
 
-        // Store all elements from the API
-        setAllElements(sortedElements);
+        // Add icon path for each node and store elements
+        const enhanced = sortedElements.map(el => {
+          if (el.group === 'nodes') {
+            return {
+              ...el,
+              data: { ...el.data, icon: getIconPath(el.data?.type) }
+            };
+          }
+          return el;
+        });
+        setAllElements(enhanced);
         setInitialDataFetched(true);
 
         // Compute min/max timestamp from all elements
@@ -335,12 +345,18 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         console.warn("Elements is not an array:", data.elements);
         setElements([]);
       } else {
-        // Store all elements from the API
-        setElements(data.elements);
+        // Store all elements from the API with icon paths
+        const enhanced = data.elements.map((el: any) => {
+          if (el.group === 'nodes') {
+            return { ...el, data: { ...el.data, icon: getIconPath(el.data?.type) } };
+          }
+          return el;
+        });
+        setElements(enhanced);
 
         // Initialize current elements if empty
         if (currentElements.length === 0) {
-          setCurrentElements(data.elements);
+          setCurrentElements(enhanced);
         }
       }
     } catch (e: any) {
@@ -407,7 +423,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         'text-valign': 'center',
         'text-halign': 'center',
         'border-width': '1px',
-        'border-color': '#333'
+        'border-color': '#333',
+        'background-image': 'data(icon)',
+        'background-fit': 'cover cover'
       }
     },
     {
