@@ -10,7 +10,7 @@ export async function GET() {
     // Query for nodes with geographic coordinates
     const nodeResult = await session.run(`
       MATCH (n)
-      WHERE EXISTS(n.latitude) OR EXISTS(n.longitude) OR EXISTS(n.lat) OR EXISTS(n.lon)
+      WHERE n.latitude IS NOT NULL OR n.longitude IS NOT NULL OR n.lat IS NOT NULL OR n.lon IS NOT NULL
       RETURN n
       LIMIT 100
     `);
@@ -18,7 +18,7 @@ export async function GET() {
     // Query for relationships between these nodes
     const relationshipResult = await session.run(`
       MATCH (n)-[r]->(m)
-      WHERE (EXISTS(n.latitude) OR EXISTS(n.lat)) AND (EXISTS(m.latitude) OR EXISTS(m.lat))
+      WHERE (n.latitude IS NOT NULL OR n.lat IS NOT NULL) AND (m.latitude IS NOT NULL OR m.lat IS NOT NULL)
       RETURN r, id(startNode(r)) as source, id(endNode(r)) as target
       LIMIT 200
     `);
@@ -120,4 +120,5 @@ function generateMockGeoData() {
   
   return { nodes, edges };
 }
+
 

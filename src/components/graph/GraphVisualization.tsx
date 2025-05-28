@@ -590,7 +590,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     const cy = cyRef.current;
     if (!cy) return;
 
-    // Clear previous listeners
+    // Clear previous listeners to avoid duplicates
     cy.removeAllListeners();
 
     // Hover effects
@@ -628,11 +628,54 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       });
     });
 
+    // Fix for sticky drag behavior - handle mouseup globally
+    const handleGlobalMouseUp = () => {
+      if (cy) {
+        cy.userPanningEnabled(true);
+        cy.userZoomingEnabled(true);
+        cy.boxSelectionEnabled(true);
+        cy.elements().unselect();
+      }
+    };
+
+    // Add global event listener to catch mouseup events that might occur outside the component
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+
+    // Fix for sticky drag behavior within Cytoscape
+    cy.on('mouseup', (event) => {
+      // Ensure drag state is cleared
+      cy.userPanningEnabled(true);
+      cy.userZoomingEnabled(true);
+      cy.boxSelectionEnabled(true);
+      
+      // Remove any lingering selection
+      if (!event.target.isNode && !event.target.isEdge) {
+        cy.elements().unselect();
+      }
+    });
+
+    // Additional safeguards for drag end
+    cy.on('dragfree', () => {
+      // Ensure the graph is no longer in a dragging state
+      cy.userPanningEnabled(true);
+      cy.userZoomingEnabled(true);
+    });
+
+    // Handle drag end for nodes
+    cy.on('dragfreeon', 'node', () => {
+      storeNodePositions();
+    });
+
     // Store positions when layout completes
     cy.on('layoutstop', storeNodePositions);
 
+    // Return cleanup function
     return () => {
       cy.off('layoutstop', storeNodePositions);
+      cy.off('mouseup');
+      cy.off('dragfree');
+      cy.off('dragfreeon', 'node');
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
   }, [toast, storeNodePositions]);
 
@@ -914,9 +957,24 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
         layout={layoutConfig}
-        cy={(cy: cytoscape.Core) => { cyRef.current = cy; }}
+        cy={(cy: cytoscape.Core) => { 
+          cyRef.current = cy;
+          // Initialize event handlers immediately after cy is available
+          const cleanup = setupCytoscapeEvents();
+          // Store this cleanup function to be called on unmount
+          return () => {
+            if (cleanup) cleanup();
+          };
+        }}
         minZoom={0.2}
         maxZoom={2.5}
+        autoungrabify={false}
+        autounselectify={false}
+        boxSelectionEnabled={true}
+        panningEnabled={true}
+        userPanningEnabled={true}
+        userZoomingEnabled={true}
+        wheelSensitivity={0.3}
       />
     </Box>
   );
