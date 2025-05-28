@@ -2,6 +2,14 @@ import { ChakraProvider } from '@chakra-ui/react';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarContent,
+  SidebarInset,
+} from '@/components/ui/sidebar';
+import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
+import { TimelineProvider } from '@/contexts/TimelineContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -19,7 +27,18 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ChakraProvider>
-          {children}
+          <SidebarProvider>
+            <TimelineProvider>
+              <div className="flex">
+                <Sidebar className="border-r">
+                  <SidebarContent>
+                    <DashboardSidebar />
+                  </SidebarContent>
+                </Sidebar>
+                <SidebarInset>{children}</SidebarInset>
+              </div>
+            </TimelineProvider>
+          </SidebarProvider>
         </ChakraProvider>
       </body>
     </html>
