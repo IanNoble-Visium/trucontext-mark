@@ -32,7 +32,13 @@ import {
   PopoverArrow,
   PopoverCloseButton,
   Button,
-  Input
+  Input,
+  Badge,
+  useColorModeValue,
+  Card,
+  CardBody,
+  Icon,
+  Divider,
 } from '@chakra-ui/react';
 import {
   FaPlay,
@@ -43,7 +49,9 @@ import {
   FaStepBackward,
   FaCog,
   FaCalendarAlt,
-  FaBolt
+  FaBolt,
+  FaClock,
+  FaExpand,
 } from 'react-icons/fa'; // Assuming react-icons is installed
 
 interface TimeSliderProps {
@@ -90,6 +98,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
   const [isDraggingCenter, setIsDraggingCenter] = useState<boolean>(false);
   const [dragStartX, setDragStartX] = useState<number>(0);
   const [dragStartRange, setDragStartRange] = useState<[number, number]>([0, 0]);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
   // Initialize hooks
   const toast = useToast();
@@ -117,10 +126,39 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
     lastClientX: 0
   });
 
+  // Modern theme colors
+  const cardBg = useColorModeValue('rgba(255, 255, 255, 0.8)', 'rgba(30, 41, 59, 0.8)');
+  const borderColor = useColorModeValue('rgba(226, 232, 240, 0.8)', 'rgba(51, 65, 85, 0.8)');
+  const textColor = useColorModeValue('gray.800', 'white');
+  const mutedColor = useColorModeValue('gray.600', 'gray.400');
+  const accentColor = useColorModeValue('brand.500', 'brand.400');
+
   // Format timestamp for display - simple function, no dependencies
   const formatTimestamp = (timestamp: number) => {
     if (isLoading || timestamp === 0) return '...';
-    return new Date(timestamp).toLocaleString();
+    return new Date(timestamp).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // Format duration
+  const formatDuration = (start: number, end: number) => {
+    const duration = end - start;
+    const days = Math.floor(duration / (24 * 60 * 60 * 1000));
+    const hours = Math.floor((duration % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+    
+    if (days > 0) {
+      return `${days}d ${hours}h`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else {
+      const minutes = Math.floor((duration % (60 * 60 * 1000)) / (60 * 1000));
+      return `${minutes}m`;
+    }
   };
 
   // Define stopAnimation first to avoid dependency cycles
@@ -400,24 +438,97 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
     }
   }, [toast]);
 
-  const stepTimeRange = useCallback((direction: 'forward' | 'backward') => {
-    const start = currentTimeRange[0];
-    const end = currentTimeRange[1];
-    const rangeDuration = end - start;
-    const stepSize = rangeDuration * 0.5;
-    let newStart, newEnd;
-    if (direction === 'forward') {
-      newStart = Math.min(start + stepSize, maxTimestamp - rangeDuration);
-      newEnd = Math.min(end + stepSize, maxTimestamp);
+  // Quick time range presets
+  const setQuickRange = useCallback((preset: string) => {
+    const endTime = Math.min(maxTimestamp || now, now);
+    let startTime: number;
+
+    switch (preset) {
+      case '1h':
+        startTime = endTime - (60 * 60 * 1000);
+        break;
+      case '6h':
+        startTime = endTime - (6 * 60 * 60 * 1000);
+        break;
+      case '24h':
+        startTime = endTime - (24 * 60 * 60 * 1000);
+        break;
+      case '7d':
+        startTime = endTime - (7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startTime = endTime - (30 * 24 * 60 * 60 * 1000);
+        break;
+      case 'all':
+        startTime = minTimestamp || oneYearAgo;
+        break;
+      default:
+        return;
+    }
+
+    startTime = Math.max(startTime, minTimestamp || oneYearAgo);
+    updateTimeRange(startTime, endTime);
+
+    toast({
+      title: `Time range set to ${preset === 'all' ? 'full dataset' : preset}`,
+      status: 'info',
+      duration: 2000,
+      isClosable: true,
+    });
+  }, [maxTimestamp, minTimestamp, now, oneYearAgo, updateTimeRange, toast]);
+
+  // Play/pause animation
+  const togglePlayback = useCallback(() => {
+    if (isPlaying) {
+      stopAnimation();
     } else {
-      newStart = Math.max(start - stepSize, minTimestamp);
-      newEnd = Math.max(end - stepSize, minTimestamp + rangeDuration);
+      setIsPlaying(true);
+      const interval = setInterval(() => {
+        setCurrentTimeRange(prev => {
+          const [start, end] = prev;
+          const duration = end - start;
+          const step = duration * 0.1 * playbackSpeed;
+          const newStart = start + step;
+          const newEnd = end + step;
+          
+          const maxEnd = maxTimestamp || now;
+          if (newEnd > maxEnd) {
+            stopAnimation();
+            return prev;
+          }
+          
+          updateTimeRange(newStart, newEnd);
+          return [newStart, newEnd];
+        });
+      }, 1000 / playbackSpeed);
+      setAnimationInterval(interval);
     }
-    if (newStart < newEnd) {
-      setCurrentTimeRange([newStart, newEnd]);
-      debouncedUpdateTimeRange(newStart, newEnd);
+  }, [isPlaying, playbackSpeed, maxTimestamp, now, stopAnimation, updateTimeRange]);
+
+  // Step controls
+  const stepTimeRange = useCallback((direction: 'forward' | 'backward') => {
+    const [start, end] = currentTimeRange;
+    const duration = end - start;
+    const step = duration * 0.1;
+    
+    if (direction === 'forward') {
+      const newStart = start + step;
+      const newEnd = end + step;
+      const maxEnd = maxTimestamp || now;
+      
+      if (newEnd <= maxEnd) {
+        updateTimeRange(newStart, newEnd);
+      }
+    } else {
+      const newStart = start - step;
+      const newEnd = end - step;
+      const minStart = minTimestamp || oneYearAgo;
+      
+      if (newStart >= minStart) {
+        updateTimeRange(newStart, newEnd);
+      }
     }
-  }, [currentTimeRange, minTimestamp, maxTimestamp, debouncedUpdateTimeRange]);
+  }, [currentTimeRange, maxTimestamp, minTimestamp, now, oneYearAgo, updateTimeRange]);
 
   // Cleanup interval on unmount
   useEffect(() => {
@@ -585,227 +696,307 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
   }, [minTimestamp, maxTimestamp]);
 
   if (isLoading) {
-    return <Box p={4} borderWidth="1px" borderRadius="lg"><Spinner size="md" /></Box>;
+    return (
+      <Card
+        bg={cardBg}
+        backdropFilter="blur(20px)"
+        border="1px solid"
+        borderColor={borderColor}
+        borderRadius="2xl"
+        p={6}
+        boxShadow="xl"
+      >
+        <Flex align="center" justify="center" gap={3}>
+          <Icon as={FaClock} color={accentColor} boxSize={5} />
+          <Text color={textColor} fontWeight="medium">Loading timeline...</Text>
+        </Flex>
+      </Card>
+    );
   }
 
-  return (
-    <Box p={4} borderWidth="1px" borderRadius="lg">
-      <VStack spacing={3} align="stretch">
-        <Flex justifyContent="space-between" alignItems="center">
-          <Text fontWeight="medium">Time Range Filter</Text>
+  const sliderMin = minTimestamp || oneYearAgo;
+  const sliderMax = maxTimestamp || now;
 
-          {/* Playback controls */}
-          <HStack spacing={2}>
-            <Tooltip label="Step backward">
+  return (
+    <Card
+      bg={cardBg}
+      backdropFilter="blur(20px)"
+      border="1px solid"
+      borderColor={borderColor}
+      borderRadius="2xl"
+      boxShadow="xl"
+      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+      _hover={{
+        transform: "translateY(-2px)",
+        boxShadow: "2xl",
+        borderColor: accentColor,
+      }}
+    >
+      <CardBody p={6}>
+        <VStack spacing={6} align="stretch">
+          {/* Header */}
+          <Flex justify="space-between" align="center">
+            <HStack spacing={3}>
+              <Box
+                p={2}
+                borderRadius="lg"
+                bg="brand.50"
+                color="brand.600"
+                animation="pulse 2s ease-in-out infinite"
+              >
+                <Icon as={FaClock} boxSize={5} />
+              </Box>
+              <VStack align="start" spacing={0}>
+                <Text fontSize="lg" fontWeight="bold" color={textColor}>
+                  Timeline Control
+                </Text>
+                <Text fontSize="sm" color={mutedColor}>
+                  {formatDuration(currentTimeRange[0], currentTimeRange[1])} selected
+                </Text>
+              </VStack>
+            </HStack>
+
+            <HStack spacing={2}>
+              <Badge
+                colorScheme={isPlaying ? "cyber" : "gray"}
+                variant="subtle"
+                px={3}
+                py={1}
+                borderRadius="full"
+                fontSize="xs"
+                fontWeight="semibold"
+                animation={isPlaying ? "pulse 2s ease-in-out infinite" : "none"}
+              >
+                {isPlaying ? "PLAYING" : "PAUSED"}
+              </Badge>
+              
+              <Tooltip label="Advanced Controls">
+                <IconButton
+                  aria-label="Advanced controls"
+                  icon={<FaCog />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  _hover={{ bg: 'brand.50', color: 'brand.600' }}
+                />
+              </Tooltip>
+            </HStack>
+          </Flex>
+
+          {/* Time Display */}
+          <Box
+            bg="rgba(248, 250, 252, 0.8)"
+            backdropFilter="blur(10px)"
+            borderRadius="xl"
+            p={4}
+            border="1px solid"
+            borderColor="gray.200"
+          >
+            <HStack justify="space-between" spacing={4}>
+              <VStack align="start" spacing={1}>
+                <Text fontSize="xs" color={mutedColor} fontWeight="semibold">
+                  START TIME
+                </Text>
+                <Text fontSize="sm" fontWeight="medium" color={textColor}>
+                  {formatTimestamp(currentTimeRange[0])}
+                </Text>
+              </VStack>
+              
+              <Icon as={FaExpand} color={mutedColor} boxSize={3} />
+              
+              <VStack align="end" spacing={1}>
+                <Text fontSize="xs" color={mutedColor} fontWeight="semibold">
+                  END TIME
+                </Text>
+                <Text fontSize="sm" fontWeight="medium" color={textColor}>
+                  {formatTimestamp(currentTimeRange[1])}
+                </Text>
+              </VStack>
+            </HStack>
+          </Box>
+
+          {/* Range Slider */}
+          <Box px={2}>
+            <RangeSlider
+              value={currentTimeRange}
+              min={sliderMin}
+              max={sliderMax}
+              onChange={(values: number[]) => {
+                const [start, end] = values;
+                updateTimeRange(start, end);
+              }}
+              colorScheme="brand"
+              size="lg"
+            >
+              <RangeSliderTrack
+                bg="gray.200"
+                borderRadius="full"
+                h={3}
+              >
+                <RangeSliderFilledTrack
+                  bg="linear-gradient(90deg, brand.400, cyber.400)"
+                  borderRadius="full"
+                />
+              </RangeSliderTrack>
+              <RangeSliderThumb
+                index={0}
+                boxSize={6}
+                bg="white"
+                border="3px solid"
+                borderColor="brand.500"
+                boxShadow="lg"
+                _focus={{ boxShadow: "0 0 0 3px rgba(14, 165, 233, 0.3)" }}
+              />
+              <RangeSliderThumb
+                index={1}
+                boxSize={6}
+                bg="white"
+                border="3px solid"
+                borderColor="cyber.500"
+                boxShadow="lg"
+                _focus={{ boxShadow: "0 0 0 3px rgba(34, 197, 94, 0.3)" }}
+              />
+            </RangeSlider>
+          </Box>
+
+          {/* Quick Presets */}
+          <HStack spacing={2} wrap="wrap">
+            {['1h', '6h', '24h', '7d', '30d', 'all'].map((preset) => (
+              <Button
+                key={preset}
+                size="sm"
+                variant="outline"
+                borderRadius="lg"
+                onClick={() => setQuickRange(preset)}
+                _hover={{
+                  bg: 'brand.50',
+                  borderColor: 'brand.300',
+                  transform: 'scale(1.05)',
+                }}
+                transition="all 0.2s"
+              >
+                {preset === 'all' ? 'Full Range' : preset.toUpperCase()}
+              </Button>
+            ))}
+          </HStack>
+
+          {/* Playback Controls */}
+          <Flex justify="center" align="center" gap={2}>
+            <Tooltip label="Step Backward">
               <IconButton
                 aria-label="Step backward"
                 icon={<FaStepBackward />}
+                size="sm"
+                variant="ghost"
+                borderRadius="lg"
                 onClick={() => stepTimeRange('backward')}
-                size="xs"
-                isDisabled={isLoading || isPlaying}
+                _hover={{ bg: 'brand.50', color: 'brand.600' }}
               />
             </Tooltip>
-
-            <Tooltip label={isPlaying ? "Pause" : "Play"}>
+            
+            <Tooltip label="Fast Backward">
               <IconButton
-                aria-label={isPlaying ? "Pause" : "Play"}
-                icon={isPlaying ? <FaPause /> : <FaPlay />}
-                onClick={togglePlayPause}
-                size="xs"
-                isDisabled={isLoading || minTimestamp === maxTimestamp}
+                aria-label="Fast backward"
+                icon={<FaFastBackward />}
+                size="sm"
+                variant="ghost"
+                borderRadius="lg"
+                onClick={() => stepTimeRange('backward')}
+                _hover={{ bg: 'brand.50', color: 'brand.600' }}
               />
             </Tooltip>
 
-            <Tooltip label="Step forward">
+            <Button
+              leftIcon={isPlaying ? <FaPause /> : <FaPlay />}
+              onClick={togglePlayback}
+              colorScheme={isPlaying ? "red" : "brand"}
+              size="md"
+              borderRadius="xl"
+              px={6}
+              animation={isPlaying ? "pulse 2s ease-in-out infinite" : "none"}
+              _hover={{
+                transform: 'scale(1.05)',
+              }}
+              transition="all 0.2s"
+            >
+              {isPlaying ? 'Pause' : 'Play'}
+            </Button>
+
+            <Tooltip label="Fast Forward">
+              <IconButton
+                aria-label="Fast forward"
+                icon={<FaFastForward />}
+                size="sm"
+                variant="ghost"
+                borderRadius="lg"
+                onClick={() => stepTimeRange('forward')}
+                _hover={{ bg: 'brand.50', color: 'brand.600' }}
+              />
+            </Tooltip>
+            
+            <Tooltip label="Step Forward">
               <IconButton
                 aria-label="Step forward"
                 icon={<FaStepForward />}
+                size="sm"
+                variant="ghost"
+                borderRadius="lg"
                 onClick={() => stepTimeRange('forward')}
-                size="xs"
-                isDisabled={isLoading || isPlaying}
+                _hover={{ bg: 'brand.50', color: 'brand.600' }}
               />
             </Tooltip>
+          </Flex>
 
-            {/* Playback speed selector */}
-            <Select
-              size="xs"
-              width="100px"
-              value={playbackSpeed}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPlaybackSpeed(parseFloat(e.target.value))}
-              isDisabled={isLoading || isPlaying}
-            >
-              <option value={0.25}>0.25x</option>
-              <option value={0.5}>0.5x</option>
-              <option value={1}>1x</option>
-              <option value={2}>2x</option>
-              <option value={4}>4x</option>
-            </Select>
-
-            {/* Transition speed control */}
-            <Tooltip label="Transition Speed">
-              <Box display="inline-flex" alignItems="center">
-                <IconButton
-                  aria-label="Transition speed"
-                  icon={<FaBolt />}
-                  size="xs"
-                  colorScheme="teal"
-                  mr={1}
-                />
-                <Select
-                  size="xs"
-                  width="110px"
-                  value={transitionSpeed}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                    handleTransitionSpeedChange(parseInt(e.target.value))
-                  }
-                >
-                  <option value={200}>Fast (200ms)</option>
-                  <option value={500}>Medium (500ms)</option>
-                  <option value={1000}>Slow (1s)</option>
-                  <option value={2000}>Very Slow (2s)</option>
-                </Select>
-              </Box>
-            </Tooltip>
-
-            {/* Custom date picker */}
-            <Popover
-              isOpen={showCustomDatePicker}
-              onClose={() => setShowCustomDatePicker(false)}
-            >
-              <PopoverTrigger>
-                <IconButton
-                  aria-label="Custom date range"
-                  icon={<FaCalendarAlt />}
-                  size="xs"
-                  onClick={() => {
-                    // Initialize with current range - include time part
-                    const startDate = new Date(currentTimeRange[0]);
-                    const endDate = new Date(currentTimeRange[1]);
-
-                    // Format as YYYY-MM-DDTHH:MM
-                    setCustomStartDate(startDate.toISOString().slice(0, 16));
-                    setCustomEndDate(endDate.toISOString().slice(0, 16));
-
-                    setShowCustomDatePicker(true);
-                  }}
-                />
-              </PopoverTrigger>
-              <PopoverContent>
-                <PopoverArrow />
-                <PopoverCloseButton />
-                <PopoverHeader>Custom Time Range</PopoverHeader>
-                <PopoverBody>
-                  <VStack spacing={3}>
-                    <Flex direction="column" width="100%">
-                      <Text fontSize="xs">Start Date:</Text>
-                      <Box as="div" width="100%">
-                        <input
-                          type="datetime-local"
-                          value={customStartDate}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomStartDate(e.target.value)}
-                          style={{ width: '100%', padding: '4px', fontSize: '14px' }}
-                        />
-                      </Box>
-                    </Flex>
-                    <Flex direction="column" width="100%">
-                      <Text fontSize="xs">End Date:</Text>
-                      <Box as="div" width="100%">
-                        <input
-                          type="datetime-local"
-                          value={customEndDate}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomEndDate(e.target.value)}
-                          style={{ width: '100%', padding: '4px', fontSize: '14px' }}
-                        />
-                      </Box>
-                    </Flex>
-                    <Button size="sm" colorScheme="blue" onClick={handleCustomDateApply}>
-                      Apply
-                    </Button>
+          {/* Advanced Controls */}
+          {showAdvanced && (
+            <>
+              <Divider />
+              <VStack spacing={4} align="stretch">
+                <Text fontSize="sm" fontWeight="semibold" color={textColor}>
+                  Advanced Controls
+                </Text>
+                
+                <HStack spacing={4}>
+                  <VStack align="start" spacing={1} flex={1}>
+                    <Text fontSize="xs" color={mutedColor} fontWeight="semibold">
+                      PLAYBACK SPEED
+                    </Text>
+                    <Select
+                      size="sm"
+                      value={playbackSpeed}
+                      onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
+                      borderRadius="lg"
+                    >
+                      <option value={0.5}>0.5x</option>
+                      <option value={1}>1x</option>
+                      <option value={2}>2x</option>
+                      <option value={5}>5x</option>
+                    </Select>
                   </VStack>
-                </PopoverBody>
-              </PopoverContent>
-            </Popover>
-          </HStack>
-        </Flex>
-
-        <HStack spacing={4}>
-          <Text fontSize="xs" minW="140px" textAlign="center">{formatTimestamp(currentTimeRange[0])}</Text>
-          <Box position="relative" flex="1" ref={sliderRef}>
-            {/* Base RangeSlider component */}
-            <RangeSlider
-              aria-label={['min', 'max']}
-              min={minTimestamp}
-              max={maxTimestamp}
-              step={(maxTimestamp - minTimestamp) / 500}
-              value={currentTimeRange}
-              onChange={(val: [number, number]) => {
-                // Clamp to min/max
-                let [start, end] = val;
-                start = Math.max(minTimestamp, Math.min(start, maxTimestamp));
-                end = Math.max(minTimestamp, Math.min(end, maxTimestamp));
-                if (start < end) {
-                  setCurrentTimeRange([start, end]);
-                  // Call update immediately without debounce for slider movements
-                  updateTimeRange(start, end);
-                } else {
-                  console.log('TimeSlider: Ignoring invalid slider values');
-                }
-              }}
-              isDisabled={isLoading || isPlaying}
-            >
-              <RangeSliderTrack>
-                <RangeSliderFilledTrack />
-              </RangeSliderTrack>
-              <RangeSliderThumb index={0} zIndex={2} />
-              <RangeSliderThumb index={1} zIndex={2} />
-            </RangeSlider>
-
-            {/* Separate overlay for the draggable center area */}
-            <Box
-              position="absolute"
-              top="0"
-              left={`${((currentTimeRange[0] - minTimestamp) / (maxTimestamp - minTimestamp)) * 100}%`}
-              width={`${((currentTimeRange[1] - currentTimeRange[0]) / (maxTimestamp - minTimestamp)) * 100}%`}
-              height="100%"
-              backgroundColor="rgba(66, 153, 225, 0.2)"
-              cursor={isLoading || isPlaying ? "not-allowed" : "grab"}
-              _hover={{ backgroundColor: "rgba(66, 153, 225, 0.3)" }}
-              _active={{ cursor: "grabbing", backgroundColor: "rgba(66, 153, 225, 0.5)" }}
-              zIndex={10}
-              onMouseDown={!isLoading && !isPlaying ? handleCenterDragStart : undefined}
-              style={{ pointerEvents: isLoading || isPlaying ? 'none' : 'auto' }}
-              data-testid="center-drag-area"
-            >
-              {/* Visual indicator for the drag handle */}
-              <Flex
-                height="100%"
-                alignItems="center"
-                justifyContent="center"
-                pointerEvents="none"
-              >
-                <Box
-                  width="24px"
-                  height="12px"
-                  borderRadius="sm"
-                  border="2px solid"
-                  borderColor="blue.500"
-                  backgroundColor="blue.100"
-                  display="flex"
-                  flexDirection="column"
-                  justifyContent="center"
-                  alignItems="center"
-                  opacity={isLoading || isPlaying ? 0.3 : 0.8}
-                >
-                  <Box width="12px" height="1px" backgroundColor="blue.700" mb="2px" />
-                  <Box width="12px" height="1px" backgroundColor="blue.700" />
-                </Box>
-              </Flex>
-            </Box>
-          </Box>
-          <Text fontSize="xs" minW="140px" textAlign="center">{formatTimestamp(currentTimeRange[1])}</Text>
-        </HStack>
-      </VStack>
-    </Box>
+                  
+                  <VStack align="start" spacing={1} flex={1}>
+                    <Text fontSize="xs" color={mutedColor} fontWeight="semibold">
+                      TRANSITION SPEED
+                    </Text>
+                    <Select
+                      size="sm"
+                      value={transitionSpeed}
+                      onChange={(e) => setTransitionSpeed(Number(e.target.value))}
+                      borderRadius="lg"
+                    >
+                      <option value={200}>Fast (200ms)</option>
+                      <option value={500}>Medium (500ms)</option>
+                      <option value={1000}>Slow (1s)</option>
+                      <option value={2000}>Very Slow (2s)</option>
+                    </Select>
+                  </VStack>
+                </HStack>
+              </VStack>
+            </>
+          )}
+        </VStack>
+      </CardBody>
+    </Card>
   );
 };
 

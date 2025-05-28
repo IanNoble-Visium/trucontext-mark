@@ -23,34 +23,41 @@ interface GraphVisualizationProps {
 
 // Helper to normalize elements for Cytoscape
 function normalizeElements(elements: cytoscape.ElementDefinition[]) {
-  // First, collect all valid node IDs
-  const nodeIds = new Set(
-    elements
-      .filter(el => el.group === 'nodes' && el.data && el.data.id != null && el.data.id !== '')
-      .map(el => String(el.data.id))
-  );
+  if (!elements || !Array.isArray(elements)) {
+    console.warn('normalizeElements received invalid elements:', elements);
+    return [];
+  }
 
-  // Now, filter and normalize nodes and edges
-  return elements
-    .filter(el => {
-      if (el.group === 'nodes') {
-        return el.data && el.data.id != null && el.data.id !== '';
-      }
-      if (el.group === 'edges') {
-        return (
-          el.data &&
-          el.data.id != null &&
-          el.data.id !== '' &&
-          el.data.source != null &&
-          el.data.target != null &&
-          el.data.source !== '' &&
-          el.data.target !== '' &&
-          nodeIds.has(String(el.data.source)) &&
-          nodeIds.has(String(el.data.target))
-        );
-      }
-      return false;
-    })
+  try {
+    // First, collect all valid node IDs
+    const nodeIds = new Set(
+      elements
+        .filter(el => el && el.group === 'nodes' && el.data && el.data.id != null && el.data.id !== '')
+        .map(el => String(el.data.id))
+    );
+
+    // Now, filter and normalize nodes and edges
+    return elements
+      .filter(el => {
+        if (!el || !el.data) return false;
+
+        if (el.group === 'nodes') {
+          return el.data.id != null && el.data.id !== '';
+        }
+        if (el.group === 'edges') {
+          return (
+            el.data.id != null &&
+            el.data.id !== '' &&
+            el.data.source != null &&
+            el.data.target != null &&
+            el.data.source !== '' &&
+            el.data.target !== '' &&
+            nodeIds.has(String(el.data.source)) &&
+            nodeIds.has(String(el.data.target))
+          );
+        }
+        return false;
+      })
     .map(el => {
       if (el.group === 'nodes') {
         return {
@@ -74,6 +81,10 @@ function normalizeElements(elements: cytoscape.ElementDefinition[]) {
       }
       return el;
     });
+  } catch (error) {
+    console.error('Error normalizing elements:', error);
+    return [];
+  }
 }
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime, onDataRangeChange }) => {
@@ -91,13 +102,20 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const [transitionSpeed, setTransitionSpeed] = useState<number>(500); // Transition speed in ms
   const [initialDataFetched, setInitialDataFetched] = useState<boolean>(false);
   const [lastFetchParams, setLastFetchParams] = useState<{ start: number, end: number } | null>(null);
+  const [dataFetchAttempted, setDataFetchAttempted] = useState<boolean>(false); // Flag to prevent multiple fetch attempts
 
   // Initialize refs
   const cyRef = useRef<cytoscape.Core | null>(null); // Ref to store cytoscape instance
   const nodePositionsRef = useRef<Record<string, { x: number, y: number }>>({});
+  const onDataRangeChangeRef = useRef(onDataRangeChange); // Store callback in ref to prevent dependency loops
 
   // Initialize hooks
   const toast = useToast();
+
+  // Update the ref when the callback changes
+  useEffect(() => {
+    onDataRangeChangeRef.current = onDataRangeChange;
+  }, [onDataRangeChange]);
 
   // This is a helper function NOT using hooks, so it's safe to define here
   const validateTimeRange = (start: number, end: number) => {
@@ -120,6 +138,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
   // Fetch all graph data at once
   const fetchAllData = useCallback(async () => {
+    // Prevent multiple simultaneous calls
+    if (dataFetchAttempted) {
+      console.log('Data fetch already attempted, skipping...');
+      return;
+    }
+
+    setDataFetchAttempted(true);
     setLoading(true);
     setError(null);
 
@@ -178,12 +203,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           if (el.group === 'nodes') {
             // Ensure we're getting the icon path correctly
             const iconPath = getIconPath(el.data?.type);
-            
+
             // Add an error handler for the icon
             return {
               ...el,
-              data: { 
-                ...el.data, 
+              data: {
+                ...el.data,
                 icon: iconPath,
                 // Add a fallback icon in case the main one fails to load
                 fallbackIcon: '/icons/unknown.png'
@@ -194,6 +219,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         });
         setAllElements(enhanced);
         setInitialDataFetched(true);
+
+        // Clear any previous error state on successful data fetch
+        setError(null);
 
         // Compute min/max timestamp from all elements
         let minTimestamp = Infinity;
@@ -213,8 +241,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           maxTimestamp = new Date('2023-12-31T23:59:59.999Z').getTime();
         }
         // Call the callback if provided
-        if (onDataRangeChange) {
-          onDataRangeChange(minTimestamp, maxTimestamp);
+        if (onDataRangeChangeRef.current) {
+          onDataRangeChangeRef.current(minTimestamp, maxTimestamp);
         }
       }
     } catch (e: any) {
@@ -229,10 +257,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         isClosable: true,
       });
       setInitialDataFetched(false);
+      // Reset the flag on error so user can retry
+      setDataFetchAttempted(false);
     } finally {
       setLoading(false);
     }
-  }, [toast, onDataRangeChange]); // Only include toast in dependencies
+  }, [toast, dataFetchAttempted]); // Include dataFetchAttempted in dependencies
 
   // Filter data locally based on time range
   const filterDataByTimeRange = useCallback((start: number, end: number) => {
@@ -386,9 +416,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
   // Initial data fetch
   useEffect(() => {
+    // Clear any previous error state when starting fresh
+    setError(null);
     // Fetch all data once when component mounts
     fetchAllData();
-  }, [fetchAllData]);
+  }, []); // Empty dependency array to run only once on mount
 
   // Handle time range changes
   useEffect(() => {
@@ -465,6 +497,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         'shape': 'triangle',
         'border-width': '2px',
         'border-color': '#c0392b'
+      }
+    },
+    {
+      selector: 'node[type="Character"]',
+      style: {
+        'background-color': '#9F7AEA',
+        'shape': 'round-octagon'
       }
     },
     {
@@ -546,137 +585,200 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     refresh: 20,
     fit: true,
     padding: 40,
-    randomize: true,
+    randomize: false,
     componentSpacing: 150,
     nodeRepulsion: () => 450000,
     edgeElasticity: () => 150,
     nestingFactor: 5,
     gravity: 80,
-    numIter: 1500,
-    initialTemp: 250,
+    numIter: 800,
+    initialTemp: 150,
     coolingFactor: 0.95,
     minTemp: 1.0,
-    animate: true,
-    animationDuration: 500
+    animate: false,
+    animationDuration: 0,
   };
 
   // Store and apply node positions
   const storeNodePositions = useCallback(() => {
     const cy = cyRef.current;
-    if (!cy) return;
+    if (!cy || cy.destroyed()) return;
 
-    const positions: Record<string, { x: number, y: number }> = {};
-    cy.nodes().forEach((node) => {
-      const position = node.position();
-      positions[node.id()] = { x: position.x, y: position.y };
-    });
-    nodePositionsRef.current = positions;
+    try {
+      const positions: Record<string, { x: number, y: number }> = {};
+      cy.nodes().forEach((node) => {
+        const position = node.position();
+        if (position && typeof position.x === 'number' && typeof position.y === 'number') {
+          positions[node.id()] = { x: position.x, y: position.y };
+        }
+      });
+      nodePositionsRef.current = positions;
+    } catch (error) {
+      console.warn('Error storing node positions:', error);
+    }
   }, []);
 
   const applyStoredPositions = useCallback(() => {
     const cy = cyRef.current;
-    if (!cy) return;
+    if (!cy || cy.destroyed()) return;
 
-    const positions = nodePositionsRef.current;
-    cy.nodes().forEach((node) => {
-      if (positions[node.id()]) {
-        node.position(positions[node.id()]);
-      }
-    });
+    try {
+      const positions = nodePositionsRef.current;
+      cy.nodes().forEach((node) => {
+        if (positions[node.id()]) {
+          node.position(positions[node.id()]);
+        }
+      });
+    } catch (error) {
+      console.warn('Error applying stored positions:', error);
+    }
   }, []);
 
   // Handle events and animations
   const setupCytoscapeEvents = useCallback(() => {
     const cy = cyRef.current;
-    if (!cy) return;
+    if (!cy || cy.destroyed()) return;
 
-    // Clear previous listeners to avoid duplicates
-    cy.removeAllListeners();
+    try {
+      // Clear previous listeners to avoid duplicates
+      cy.removeAllListeners();
 
-    // Hover effects
-    cy.on('mouseover', 'node', (event) => {
-      event.target.addClass('hovered');
-    });
-
-    cy.on('mouseout', 'node', (event) => {
-      event.target.removeClass('hovered');
-    });
-
-    // Node click events
-    cy.on('tap', 'node', (event) => {
-      const nodeData = event.target.data();
-      console.log('Node clicked:', nodeData);
-      toast({
-        title: `Node Clicked: ${nodeData.label || nodeData.id}`,
-        description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`,
-        status: 'info',
-        duration: 3000,
-        isClosable: true,
+      // Hover effects
+      cy.on('mouseover', 'node', (event) => {
+        try {
+          event.target.addClass('hovered');
+        } catch (error) {
+          console.warn('Error adding hover class:', error);
+        }
       });
-    });
 
-    // Edge click events
-    cy.on('tap', 'edge', (event) => {
-      const edgeData = event.target.data();
-      console.log('Edge clicked:', edgeData);
-      toast({
-        title: `Edge Clicked: ${edgeData.label || edgeData.id}`,
-        description: `Source: ${edgeData.source}, Target: ${edgeData.target}`,
-        status: 'info',
-        duration: 3000,
-        isClosable: true,
+      cy.on('mouseout', 'node', (event) => {
+        try {
+          event.target.removeClass('hovered');
+        } catch (error) {
+          console.warn('Error removing hover class:', error);
+        }
       });
-    });
 
-    // Fix for sticky drag behavior - handle mouseup globally
-    const handleGlobalMouseUp = () => {
-      if (cy) {
-        cy.userPanningEnabled(true);
-        cy.userZoomingEnabled(true);
-        cy.boxSelectionEnabled(true);
-        cy.elements().unselect();
-      }
-    };
+      // Node click events
+      cy.on('tap', 'node', (event) => {
+        try {
+          const nodeData = event.target.data();
+          console.log('Node clicked:', nodeData);
+          toast({
+            title: `Node Clicked: ${nodeData.label || nodeData.id}`,
+            description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`,
+            status: 'info',
+            duration: 3000,
+            isClosable: true,
+          });
+        } catch (error) {
+          console.warn('Error handling node click:', error);
+        }
+      });
 
-    // Add global event listener to catch mouseup events that might occur outside the component
-    window.addEventListener('mouseup', handleGlobalMouseUp);
+      // Edge click events
+      cy.on('tap', 'edge', (event) => {
+        try {
+          const edgeData = event.target.data();
+          console.log('Edge clicked:', edgeData);
+          toast({
+            title: `Edge Clicked: ${edgeData.label || edgeData.id}`,
+            description: `Source: ${edgeData.source}, Target: ${edgeData.target}`,
+            status: 'info',
+            duration: 3000,
+            isClosable: true,
+          });
+        } catch (error) {
+          console.warn('Error handling edge click:', error);
+        }
+      });
 
-    // Fix for sticky drag behavior within Cytoscape
-    cy.on('mouseup', (event) => {
-      // Ensure drag state is cleared
-      cy.userPanningEnabled(true);
-      cy.userZoomingEnabled(true);
-      cy.boxSelectionEnabled(true);
-      
-      // Remove any lingering selection
-      if (!event.target.isNode && !event.target.isEdge) {
-        cy.elements().unselect();
-      }
-    });
+      // Fix for sticky drag behavior - handle mouseup globally
+      const handleGlobalMouseUp = () => {
+        try {
+          if (cy && !cy.destroyed()) {
+            cy.userPanningEnabled(true);
+            cy.userZoomingEnabled(true);
+            cy.boxSelectionEnabled(true);
+            cy.elements().unselect();
+          }
+        } catch (error) {
+          console.warn('Error in global mouse up handler:', error);
+        }
+      };
 
-    // Additional safeguards for drag end
-    cy.on('dragfree', () => {
-      // Ensure the graph is no longer in a dragging state
-      cy.userPanningEnabled(true);
-      cy.userZoomingEnabled(true);
-    });
+      // Add global event listener to catch mouseup events that might occur outside the component
+      window.addEventListener('mouseup', handleGlobalMouseUp);
 
-    // Handle drag end for nodes
-    cy.on('dragfreeon', 'node', () => {
-      storeNodePositions();
-    });
+      // Fix for sticky drag behavior within Cytoscape
+      cy.on('mouseup', (event) => {
+        try {
+          // Ensure drag state is cleared
+          cy.userPanningEnabled(true);
+          cy.userZoomingEnabled(true);
+          cy.boxSelectionEnabled(true);
 
-    // Store positions when layout completes
-    cy.on('layoutstop', storeNodePositions);
+          // Remove any lingering selection
+          if (!event.target.isNode && !event.target.isEdge) {
+            cy.elements().unselect();
+          }
+        } catch (error) {
+          console.warn('Error in mouseup handler:', error);
+        }
+      });
 
-    // Return cleanup function
-    return () => {
-      cy.off('layoutstop', storeNodePositions);
-      cy.off('mouseup');
-      cy.off('dragfree');
-      cy.off('dragfreeon', 'node');
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
+      // Additional safeguards for drag end
+      cy.on('dragfree', () => {
+        try {
+          // Ensure the graph is no longer in a dragging state
+          cy.userPanningEnabled(true);
+          cy.userZoomingEnabled(true);
+        } catch (error) {
+          console.warn('Error in dragfree handler:', error);
+        }
+      });
+
+      // Handle drag end for nodes
+      cy.on('dragfreeon', 'node', () => {
+        try {
+          storeNodePositions();
+        } catch (error) {
+          console.warn('Error storing positions on drag end:', error);
+        }
+      });
+
+      // Store positions when layout completes
+      cy.on('layoutstop', () => {
+        try {
+          storeNodePositions();
+        } catch (error) {
+          console.warn('Error storing positions on layout stop:', error);
+        }
+      });
+
+      // Return cleanup function
+      return () => {
+        try {
+          if (cy && !cy.destroyed()) {
+            cy.off('layoutstop');
+            cy.off('mouseup');
+            cy.off('dragfree');
+            cy.off('dragfreeon', 'node');
+            cy.off('tap', 'node');
+            cy.off('tap', 'edge');
+            cy.off('mouseover', 'node');
+            cy.off('mouseout', 'node');
+          }
+          window.removeEventListener('mouseup', handleGlobalMouseUp);
+        } catch (error) {
+          console.warn('Error during event cleanup:', error);
+        }
+      };
+    } catch (error) {
+      console.error('Error setting up cytoscape events:', error);
+      return () => {}; // Return empty cleanup function on error
+    }
   }, [toast, storeNodePositions]);
 
   // Handle smooth transitions between time ranges
@@ -685,11 +787,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
     try {
       // Compare current and new elements to determine what changed
-      const elementsToAdd = elements.filter(el => 
+      const elementsToAdd = elements.filter(el =>
         !currentElements.some(curEl => curEl.data.id === el.data.id)
       );
-      
-      const elementsToRemove = currentElements.filter(curEl => 
+
+      const elementsToRemove = currentElements.filter(curEl =>
         !elements.some(el => el.data.id === curEl.data.id)
       );
 
@@ -712,7 +814,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       if (sortedElementsToRemove.length > 0 || sortedElementsToAdd.length > 0) {
         // Update the elements state immediately
         setCurrentElements(elements);
-        
+
         // Apply animations to the updated elements
         const cy = cyRef.current;
         if (cy && animationEnabled) {
@@ -725,7 +827,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
             if (newEls.length > 0) {
               // Start with opacity 0 and fade in
               newEls.style({ 'opacity': 0 });
-              
+
               // Animate the entrance with the effective transition speed
               newEls.animate({
                 style: { 'opacity': 1 },
@@ -798,35 +900,86 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   // Setup cytoscape and handle visualization
   useEffect(() => {
     const cy = cyRef.current;
-    if (!cy) return;
+    if (!cy || cy.destroyed()) return;
 
-    // Apply stored positions before running layout
-    applyStoredPositions();
+    let currentLayout: cytoscape.Layouts | null = null;
+    let isCleanedUp = false;
 
-    // Run layout with animation settings
-    const hasNewNodes = cy.nodes().some(node => !nodePositionsRef.current[(node as cytoscape.NodeSingular).id()]);
+    try {
+      // Stop any existing layouts first
+      cy.stop();
+      
+      // Apply stored positions before running layout
+      applyStoredPositions();
 
-    if (hasNewNodes || cy.nodes().length === 0) {
-      const layoutOptions = {
-        ...layoutConfig,
-        animate: animationEnabled,
-        animationDuration: animationEnabled ? 800 : 0,
-        randomize: false,
-        fit: false
+      // Run layout only if we have nodes
+      const nodes = cy.nodes();
+      if (nodes.length > 0) {
+        const hasNewNodes = nodes.some(node => !nodePositionsRef.current[(node as cytoscape.NodeSingular).id()]);
+
+        if (hasNewNodes) {
+          const layoutOptions = {
+            ...layoutConfig,
+            animate: animationEnabled,
+            animationDuration: animationEnabled ? 600 : 0,
+            stop: () => {
+              if (!isCleanedUp) {
+                // Use setTimeout to avoid immediate callback issues
+                setTimeout(() => {
+                  if (!isCleanedUp) {
+                    storeNodePositions();
+                  }
+                }, 50);
+              }
+            }
+          };
+
+          currentLayout = cy.layout(layoutOptions);
+          currentLayout.run();
+        }
+      }
+
+      // Setup events
+      const cleanup = setupCytoscapeEvents();
+
+      // Return cleanup function
+      return () => {
+        isCleanedUp = true;
+        try {
+          // Stop current layout if it's running
+          if (currentLayout) {
+            currentLayout.stop();
+            currentLayout = null;
+          }
+          
+          // Stop any running layouts
+          if (cy && !cy.destroyed()) {
+            cy.stop();
+          }
+          
+          storeNodePositions();
+          if (cleanup) cleanup();
+        } catch (error) {
+          console.warn('Error during cytoscape cleanup:', error);
+        }
       };
-
-      const layout = cy.layout(layoutOptions);
-      layout.run();
+    } catch (error) {
+      console.error('Error in cytoscape setup:', error);
+      isCleanedUp = true;
+      // Return cleanup function even on error
+      return () => {
+        try {
+          if (currentLayout) {
+            currentLayout.stop();
+          }
+          if (cy && !cy.destroyed()) {
+            cy.stop();
+          }
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      };
     }
-
-    // Setup events
-    const cleanup = setupCytoscapeEvents();
-
-    // Store positions before unmounting
-    return () => {
-      storeNodePositions();
-      if (cleanup) cleanup();
-    };
   }, [currentElements, applyStoredPositions, storeNodePositions, setupCytoscapeEvents, animationEnabled]);
 
   // Toggle animation handler
@@ -957,14 +1110,56 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
         layout={layoutConfig}
-        cy={(cy: cytoscape.Core) => { 
-          cyRef.current = cy;
-          // Initialize event handlers immediately after cy is available
-          const cleanup = setupCytoscapeEvents();
-          // Store this cleanup function to be called on unmount
-          return () => {
-            if (cleanup) cleanup();
-          };
+        cy={(cy: cytoscape.Core) => {
+          try {
+            cyRef.current = cy;
+            
+            // Add error handling for cytoscape events
+            cy.on('error', (event) => {
+              console.warn('Cytoscape error:', event);
+            });
+
+            // Prevent the null notify error by ensuring proper cleanup
+            const originalDestroy = cy.destroy;
+            cy.destroy = function() {
+              try {
+                // Stop all layouts before destroying
+                this.stop();
+                // Clear all event listeners
+                this.removeAllListeners();
+                // Call original destroy
+                originalDestroy.call(this);
+              } catch (error) {
+                console.warn('Error during cytoscape destroy:', error);
+                // Still call original destroy even if there's an error
+                try {
+                  originalDestroy.call(this);
+                } catch (e) {
+                  // Ignore final destroy errors
+                }
+              }
+            };
+
+            // Initialize event handlers immediately after cy is available
+            const cleanup = setupCytoscapeEvents();
+            
+            // Store this cleanup function to be called on unmount
+            return () => {
+              try {
+                if (cleanup) cleanup();
+                // Additional cleanup to prevent null notify errors
+                if (cy && !cy.destroyed()) {
+                  cy.stop();
+                  cy.removeAllListeners();
+                }
+              } catch (error) {
+                console.warn('Error during cytoscape component cleanup:', error);
+              }
+            };
+          } catch (error) {
+            console.error('Error initializing cytoscape component:', error);
+            return () => {}; // Return empty cleanup function
+          }
         }}
         minZoom={0.2}
         maxZoom={2.5}
@@ -974,7 +1169,6 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         panningEnabled={true}
         userPanningEnabled={true}
         userZoomingEnabled={true}
-        wheelSensitivity={0.3}
       />
     </Box>
   );

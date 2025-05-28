@@ -14,10 +14,8 @@
     "vercel-build": "npm run clean && next build"
   },
   "dependencies": {
-    "next": "14.1.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "@chakra-ui/react": "^2.8.2",
+    "@chakra-ui/theme-tools": "^2.2.8",
     "@emotion/react": "^11.11.3",
     "@emotion/styled": "^11.11.0",
     "@hookform/resolvers": "^3.3.2",
@@ -55,22 +53,25 @@
     "embla-carousel-react": "^7.1.0",
     "framer-motion": "^10.16.16",
     "input-otp": "^1.4.2",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.294.0",
     "neo4j-driver": "^5.28.1",
+    "next": "14.1.0",
     "next-themes": "^0.4.4",
+    "react": "^18.2.0",
     "react-cytoscapejs": "^2.0.0",
     "react-day-picker": "8.10.1",
-    "react-icons": "^4.12.0",
+    "react-dom": "^18.2.0",
     "react-hook-form": "^7.49.2",
+    "react-icons": "^4.12.0",
+    "react-leaflet": "^4.2.1",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.10.3",
     "sonner": "^1.7.2",
     "tailwind-merge": "^1.14.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
-    "zod": "^3.22.4",
-    "leaflet": "^1.9.4",
-    "react-leaflet": "^4.2.1"
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^2.1.4",
@@ -85,8 +86,3 @@
     "typescript": "^5"
   }
 }
-
-
-
-
-
