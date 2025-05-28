@@ -1,4 +1,4 @@
-import { ChakraProvider } from '@chakra-ui/react';
+import Providers from './providers';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -26,7 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <ChakraProvider>
+        <Providers>
           <SidebarProvider>
             <TimelineProvider>
               <div className="flex">
@@ -39,7 +39,7 @@ export default function RootLayout({
               </div>
             </TimelineProvider>
           </SidebarProvider>
-        </ChakraProvider>
+        </Providers>
       </body>
     </html>
   );
