@@ -4,8 +4,6 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { TimelineProvider } from '@/contexts/TimelineContext';
-import { Box, Flex } from '@chakra-ui/react';
-import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -24,17 +22,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ChakraProvider theme={theme}>
           <TimelineProvider>
-            <Flex h="100vh" overflow="hidden">
-              {/* Sidebar */}
-              <Box w="320px" flexShrink={0}>
-                <DashboardSidebar />
-              </Box>
-
-              {/* Main Content */}
-              <Box flex="1" overflow="auto">
-                {children}
-              </Box>
-            </Flex>
+            {children}
           </TimelineProvider>
         </ChakraProvider>
       </body>

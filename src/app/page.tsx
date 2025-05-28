@@ -3,8 +3,6 @@
 import { useTimeline } from "@/contexts/TimelineContext";
 import {
   Box,
-  Grid,
-  GridItem,
   Heading,
   Text,
   Tabs,
@@ -21,49 +19,18 @@ import {
   HStack,
   VStack,
   useColorModeValue,
-  Spinner,
   useDisclosure,
   Collapse,
   IconButton,
   Tooltip,
-  Container,
-  Divider,
-  Button,
-  Progress,
-  Stat,
-  StatLabel,
-  StatNumber,
-  StatHelpText,
-  StatArrow,
-  SimpleGrid,
 } from "@chakra-ui/react";
 import {
   FaShieldAlt,
-  FaChartLine,
   FaGlobe,
-  FaClock,
   FaExpand,
   FaCompress,
   FaBolt,
-  FaEye,
   FaNetworkWired,
-  FaExclamationTriangle,
-  FaCheckCircle,
-  FaInfoCircle,
-  FaCog,
-  FaDownload,
-  FaSync,
-  FaFilter,
-  FaSearch,
-  FaUser,
-  FaServer,
-  FaDatabase,
-  FaLock,
-  FaUnlock,
-  FaPlay,
-  FaPause,
-  FaChevronLeft,
-  FaChevronRight,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
@@ -84,8 +51,7 @@ const GeoMap = dynamic(
   }
 );
 
-import KpiSummary from "@/components/dashboard/KpiSummary";
-import TimeSlider from "@/components/dashboard/TimeSlider";
+import UnifiedControlPanel from "@/components/dashboard/UnifiedControlPanel";
 import { FloatingActionButton, QuickAccessToolbar } from "@/components/ui/FloatingActionButton";
 import {
   GraphVisualizationSkeleton,
@@ -101,7 +67,6 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState(0);
   const [dataStats, setDataStats] = useState({ nodes: 0, edges: 0, lastUpdate: null as string | null });
   const [isLiveMode, setIsLiveMode] = useState(true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isOpen: showStats, onToggle: toggleStats } = useDisclosure();
 
   // Modern theme-aware colors with glassmorphism
@@ -111,7 +76,6 @@ export default function Home() {
     'linear(to-br, #0f172a, #1e293b, #334155)'
   );
   const cardBg = useColorModeValue('rgba(255, 255, 255, 0.8)', 'rgba(30, 41, 59, 0.8)');
-  const sidebarBg = useColorModeValue('rgba(255, 255, 255, 0.95)', 'rgba(15, 23, 42, 0.95)');
   const borderColor = useColorModeValue('rgba(226, 232, 240, 0.8)', 'rgba(51, 65, 85, 0.8)');
   const textColor = useColorModeValue('gray.800', 'white');
   const mutedColor = useColorModeValue('gray.600', 'gray.400');
@@ -165,271 +129,11 @@ export default function Home() {
         />
 
         <Flex h="100vh">
-          {/* Modern Collapsible Sidebar */}
-          <Box
-            w={sidebarCollapsed ? "80px" : "380px"}
-            bg={sidebarBg}
-            backdropFilter="blur(20px)"
-            borderRight="1px solid"
-            borderColor={borderColor}
-            transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-            position="relative"
-            zIndex={10}
-            boxShadow="xl"
-          >
-            {/* Sidebar Header */}
-            <Flex
-              h="80px"
-              align="center"
-              justify="space-between"
-              px={sidebarCollapsed ? 4 : 6}
-              borderBottom="1px solid"
-              borderColor={borderColor}
-            >
-              {!sidebarCollapsed && (
-                <VStack align="start" spacing={0}>
-                  <Heading
-                    size="md"
-                    color={textColor}
-                    fontWeight="bold"
-                    bgGradient="linear(to-r, brand.500, cyber.500)"
-                    bgClip="text"
-                  >
-                    TruContext
-                  </Heading>
-                  <Text fontSize="xs" color={mutedColor} fontWeight="medium">
-                    Cyber Intelligence Platform
-                  </Text>
-                </VStack>
-              )}
-              <Tooltip label={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>
-                <IconButton
-                  aria-label="Toggle sidebar"
-                  icon={sidebarCollapsed ? <FaChevronRight /> : <FaChevronLeft />}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  _hover={{ bg: 'brand.50', color: 'brand.600' }}
-                  transition="all 0.2s"
-                />
-              </Tooltip>
-            </Flex>
-
-            {/* Control Panel */}
-            <VStack spacing={4} p={sidebarCollapsed ? 2 : 6} align="stretch">
-              {!sidebarCollapsed && (
-                <Text fontSize="sm" fontWeight="semibold" color={mutedColor} mb={2}>
-                  Control Panel
-                </Text>
-              )}
-
-              {/* Live Status */}
-              <Card
-                bg={cardBg}
-                backdropFilter="blur(10px)"
-                border="1px solid"
-                borderColor={borderColor}
-                borderRadius="xl"
-                p={sidebarCollapsed ? 2 : 4}
-                transition="all 0.2s"
-                _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-              >
-                <Flex align="center" justify={sidebarCollapsed ? "center" : "space-between"}>
-                  {!sidebarCollapsed && (
-                    <VStack align="start" spacing={1}>
-                      <Text fontSize="sm" fontWeight="semibold" color={textColor}>
-                        Live Monitoring
-                      </Text>
-                      <Text fontSize="xs" color={mutedColor}>
-                        Real-time threat detection
-                      </Text>
-                    </VStack>
-                  )}
-                  <Button
-                    size={sidebarCollapsed ? "sm" : "xs"}
-                    colorScheme={isLiveMode ? "cyber" : "gray"}
-                    variant={isLiveMode ? "solid" : "outline"}
-                    leftIcon={isLiveMode ? <FaPlay /> : <FaPause />}
-                    onClick={() => setIsLiveMode(!isLiveMode)}
-                    borderRadius="lg"
-                    animation={isLiveMode ? "pulse 2s ease-in-out infinite" : "none"}
-                  >
-                    {!sidebarCollapsed && (isLiveMode ? "LIVE" : "PAUSED")}
-                  </Button>
-                </Flex>
-              </Card>
-
-              {/* Executive Summary - KPI Stats */}
-              {!sidebarCollapsed && (
-                <Card
-                  bg={cardBg}
-                  backdropFilter="blur(10px)"
-                  border="1px solid"
-                  borderColor={borderColor}
-                  borderRadius="xl"
-                  p={4}
-                  transition="all 0.2s"
-                  _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                >
-                  <VStack align="start" spacing={4}>
-                    <Flex align="center" gap={3}>
-                      <Box
-                        p={2}
-                        borderRadius="lg"
-                        bg="brand.50"
-                        color="brand.600"
-                        animation="pulse 2s ease-in-out infinite"
-                      >
-                        <Icon as={FaChartLine} boxSize={4} />
-                      </Box>
-                      <VStack align="start" spacing={0}>
-                        <Text fontSize="md" fontWeight="bold" color={textColor}>
-                          Executive Summary
-                        </Text>
-                        <Text fontSize="xs" color={mutedColor}>
-                          Real-time threat metrics
-                        </Text>
-                      </VStack>
-                    </Flex>
-                    
-                    {/* Compact KPI Summary */}
-                    <KpiSummary />
-                  </VStack>
-                </Card>
-              )}
-
-              {/* Quick Stats */}
-              {!sidebarCollapsed && (
-                <SimpleGrid columns={2} spacing={3}>
-                  <Stat
-                    bg={cardBg}
-                    backdropFilter="blur(10px)"
-                    border="1px solid"
-                    borderColor={borderColor}
-                    borderRadius="lg"
-                    p={3}
-                    textAlign="center"
-                  >
-                    <StatNumber fontSize="lg" color="brand.500">21</StatNumber>
-                    <StatLabel fontSize="xs" color={mutedColor}>Active Threats</StatLabel>
-                  </Stat>
-                  <Stat
-                    bg={cardBg}
-                    backdropFilter="blur(10px)"
-                    border="1px solid"
-                    borderColor={borderColor}
-                    borderRadius="lg"
-                    p={3}
-                    textAlign="center"
-                  >
-                    <StatNumber fontSize="lg" color="cyber.500">115</StatNumber>
-                    <StatLabel fontSize="xs" color={mutedColor}>Resolved</StatLabel>
-                  </Stat>
-                </SimpleGrid>
-              )}
-
-              {/* Quick Actions */}
-              <VStack spacing={2} align="stretch">
-                {!sidebarCollapsed && (
-                  <Text fontSize="xs" fontWeight="semibold" color={mutedColor} mb={1}>
-                    Quick Actions
-                  </Text>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  leftIcon={<FaSync />}
-                  justifyContent={sidebarCollapsed ? "center" : "flex-start"}
-                  _hover={{ bg: 'brand.50', color: 'brand.600' }}
-                >
-                  {!sidebarCollapsed && "Refresh Data"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  leftIcon={<FaDownload />}
-                  justifyContent={sidebarCollapsed ? "center" : "flex-start"}
-                  _hover={{ bg: 'brand.50', color: 'brand.600' }}
-                >
-                  {!sidebarCollapsed && "Export Report"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  leftIcon={<FaFilter />}
-                  justifyContent={sidebarCollapsed ? "center" : "flex-start"}
-                  _hover={{ bg: 'brand.50', color: 'brand.600' }}
-                >
-                  {!sidebarCollapsed && "Filter Data"}
-                </Button>
-              </VStack>
-
-              {/* Active Alerts */}
-              {!sidebarCollapsed && (
-                <Box>
-                  <Text fontSize="xs" fontWeight="semibold" color={mutedColor} mb={3}>
-                    Active Alerts
-                  </Text>
-                  <VStack spacing={2} align="stretch">
-                    <Card
-                      bg="rgba(239, 68, 68, 0.1)"
-                      border="1px solid"
-                      borderColor="red.200"
-                      borderRadius="lg"
-                      p={3}
-                      size="sm"
-                    >
-                      <Flex align="center" gap={2}>
-                        <Icon as={FaExclamationTriangle} color="red.500" boxSize={3} />
-                        <VStack align="start" spacing={0} flex={1}>
-                          <Text fontSize="xs" fontWeight="semibold" color="red.700">
-                            Malware Detected
-                          </Text>
-                          <Text fontSize="xs" color="red.600">
-                            Server-01 • High Priority
-                          </Text>
-                        </VStack>
-                        <Badge colorScheme="red" size="sm">High</Badge>
-                      </Flex>
-                    </Card>
-
-                    <Card
-                      bg="rgba(245, 158, 11, 0.1)"
-                      border="1px solid"
-                      borderColor="yellow.200"
-                      borderRadius="lg"
-                      p={3}
-                      size="sm"
-                    >
-                      <Flex align="center" gap={2}>
-                        <Icon as={FaInfoCircle} color="yellow.500" boxSize={3} />
-                        <VStack align="start" spacing={0} flex={1}>
-                          <Text fontSize="xs" fontWeight="semibold" color="yellow.700">
-                            Unusual Login
-                          </Text>
-                          <Text fontSize="xs" color="yellow.600">
-                            admin@visium.com • Medium
-                          </Text>
-                        </VStack>
-                        <Badge colorScheme="yellow" size="sm">Med</Badge>
-                      </Flex>
-                    </Card>
-                  </VStack>
-                </Box>
-              )}
-
-              {/* Timeline Control */}
-              {!sidebarCollapsed && (
-                <Box>
-                  <TimeSlider
-                    minTimestamp={startTime}
-                    maxTimestamp={endTime}
-                    onTimeRangeChange={handleEnhancedDataRangeChange}
-                  />
-                </Box>
-              )}
-            </VStack>
-          </Box>
+          {/* Unified Control Panel */}
+          <UnifiedControlPanel
+            isLiveMode={isLiveMode}
+            onToggleLiveMode={() => setIsLiveMode(!isLiveMode)}
+          />
 
           {/* Main Content Area */}
           <Box flex={1} p={6} overflow="hidden">

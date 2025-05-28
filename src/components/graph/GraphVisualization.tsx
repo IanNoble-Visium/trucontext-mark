@@ -2,24 +2,56 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
-import { Box, Spinner, Text, useToast, IconButton, Tooltip, HStack, Select, FormLabel } from '@chakra-ui/react';
-import { FaCog, FaBolt } from 'react-icons/fa';
+import { Box, Spinner, Text, useToast, IconButton, Tooltip, HStack, Select, VStack } from '@chakra-ui/react';
+import { FaCog, FaBolt, FaProjectDiagram } from 'react-icons/fa';
 import cytoscape from 'cytoscape'; // Import core cytoscape
 import { getIconPath } from '@/lib/iconUtils';
 
+// Import layout extensions
+import dagre from 'cytoscape-dagre';
+import cola from 'cytoscape-cola';
+import avsdf from 'cytoscape-avsdf';
+import coseBilkent from 'cytoscape-cose-bilkent';
+
+// Register layout extensions
+cytoscape.use(dagre);
+cytoscape.use(cola);
+cytoscape.use(avsdf);
+cytoscape.use(coseBilkent);
+
 // If you see a missing type error for 'react-cytoscapejs', add a declaration file or use: declare module 'react-cytoscapejs';
 
-// Define the structure of the elements expected by Cytoscape
-interface CytoscapeElement {
-  data: { id: string; label?: string; type?: string; riskLevel?: 'High' | 'Medium' | 'Low'; timestamp?: number; [key: string]: any };
-  group: 'nodes' | 'edges';
-}
+// Define the structure of the elements expected by Cytoscape (for reference)
+// interface CytoscapeElement {
+//   data: { id: string; label?: string; type?: string; riskLevel?: 'High' | 'Medium' | 'Low'; timestamp?: number; [key: string]: any };
+//   group: 'nodes' | 'edges';
+// }
 
 interface GraphVisualizationProps {
   startTime: number; // Timestamp in milliseconds
   endTime: number;   // Timestamp in milliseconds
   onDataRangeChange?: (min: number, max: number) => void;
 }
+
+// Layout options with descriptions
+interface LayoutOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+const LAYOUT_OPTIONS: LayoutOption[] = [
+  { value: 'cose', label: 'Cose', description: 'Compound spring embedder - good for general graphs' },
+  { value: 'cose-bilkent', label: 'Cose Bilkent', description: 'Enhanced compound spring embedder with better performance' },
+  { value: 'cola', label: 'Cola', description: 'Constraint-based force-directed layout' },
+  { value: 'dagre', label: 'Dagre', description: 'Hierarchical tree-like arrangement' },
+  { value: 'avsdf', label: 'AVSDF', description: 'Force-directed with good node separation' },
+  { value: 'circle', label: 'Circle', description: 'Nodes arranged in a circle' },
+  { value: 'concentric', label: 'Concentric', description: 'Nodes in concentric circles based on hierarchy' },
+  { value: 'grid', label: 'Grid', description: 'Nodes arranged in a grid pattern' },
+  { value: 'breadthfirst', label: 'Breadthfirst', description: 'Hierarchical breadth-first tree' },
+  { value: 'random', label: 'Random', description: 'Random positioning of nodes' },
+];
 
 // Helper to normalize elements for Cytoscape
 function normalizeElements(elements: cytoscape.ElementDefinition[]) {
@@ -103,6 +135,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const [initialDataFetched, setInitialDataFetched] = useState<boolean>(false);
   const [lastFetchParams, setLastFetchParams] = useState<{ start: number, end: number } | null>(null);
   const [dataFetchAttempted, setDataFetchAttempted] = useState<boolean>(false); // Flag to prevent multiple fetch attempts
+  const [selectedLayout, setSelectedLayout] = useState<string>('cose'); // Current layout selection
 
   // Initialize refs
   const cyRef = useRef<cytoscape.Core | null>(null); // Ref to store cytoscape instance
@@ -577,27 +610,168 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     }
   ];
 
-  // Basic layout configuration
-  const layoutConfig = {
-    name: 'cose',
-    idealEdgeLength: 120,
-    nodeOverlap: 30,
-    refresh: 20,
-    fit: true,
-    padding: 40,
-    randomize: false,
-    componentSpacing: 150,
-    nodeRepulsion: () => 450000,
-    edgeElasticity: () => 150,
-    nestingFactor: 5,
-    gravity: 80,
-    numIter: 800,
-    initialTemp: 150,
-    coolingFactor: 0.95,
-    minTemp: 1.0,
-    animate: false,
-    animationDuration: 0,
-  };
+  // Function to get layout configuration based on selected layout
+  const getLayoutConfig = useCallback((layoutName: string) => {
+    const baseConfig = {
+      fit: true,
+      padding: 40,
+      animate: false,
+      animationDuration: 0,
+    };
+
+    switch (layoutName) {
+      case 'cose':
+        return {
+          ...baseConfig,
+          name: 'cose',
+          idealEdgeLength: 120,
+          nodeOverlap: 30,
+          refresh: 20,
+          randomize: false,
+          componentSpacing: 150,
+          nodeRepulsion: () => 450000,
+          edgeElasticity: () => 150,
+          nestingFactor: 5,
+          gravity: 80,
+          numIter: 800,
+          initialTemp: 150,
+          coolingFactor: 0.95,
+          minTemp: 1.0,
+        };
+
+      case 'cose-bilkent':
+        return {
+          ...baseConfig,
+          name: 'cose-bilkent',
+          idealEdgeLength: 120,
+          nodeRepulsion: 4500,
+          nodeOverlap: 20,
+          refresh: 30,
+          randomize: false,
+          componentSpacing: 100,
+          nestingFactor: 0.1,
+          gravity: 0.25,
+          numIter: 2500,
+          tile: true,
+          animate: 'end',
+          animationEasing: 'ease-out',
+          animationDuration: 1000,
+        };
+
+      case 'cola':
+        return {
+          ...baseConfig,
+          name: 'cola',
+          animate: true,
+          refresh: 1,
+          maxSimulationTime: 4000,
+          ungrabifyWhileSimulating: false,
+          randomize: false,
+          avoidOverlap: true,
+          handleDisconnected: true,
+          convergenceThreshold: 0.01,
+          nodeSpacing: () => 10,
+          flow: undefined,
+          alignment: undefined,
+          gapInequalities: undefined,
+        };
+
+      case 'dagre':
+        return {
+          ...baseConfig,
+          name: 'dagre',
+          nodeSep: 50,
+          edgeSep: 10,
+          rankSep: 100,
+          rankDir: 'TB',
+          ranker: 'network-simplex',
+        };
+
+      case 'avsdf':
+        return {
+          ...baseConfig,
+          name: 'avsdf',
+          nodeSeparation: 120,
+        };
+
+      case 'circle':
+        return {
+          ...baseConfig,
+          name: 'circle',
+          radius: undefined,
+          spacingFactor: 1.75,
+          boundingBox: undefined,
+          transform: (_node: any, position: any) => position,
+        };
+
+      case 'concentric':
+        return {
+          ...baseConfig,
+          name: 'concentric',
+          concentric: (node: any) => node.degree(),
+          levelWidth: (nodes: any) => nodes.maxDegree() / 4,
+          spacing: 30,
+          clockwise: true,
+          equidistant: false,
+          minNodeSpacing: 10,
+        };
+
+      case 'grid':
+        return {
+          ...baseConfig,
+          name: 'grid',
+          rows: undefined,
+          cols: undefined,
+          position: (_node: any) => ({ row: 0, col: 0 }),
+          sort: undefined,
+          animate: false,
+        };
+
+      case 'breadthfirst':
+        return {
+          ...baseConfig,
+          name: 'breadthfirst',
+          directed: false,
+          roots: undefined,
+          padding: 30,
+          spacingFactor: 1.75,
+          boundingBox: undefined,
+          avoidOverlap: true,
+          nodeDimensionsIncludeLabels: false,
+          transform: (_node: any, position: any) => position,
+        };
+
+      case 'random':
+        return {
+          ...baseConfig,
+          name: 'random',
+          boundingBox: undefined,
+          transform: (_node: any, position: any) => position,
+        };
+
+      default:
+        return {
+          ...baseConfig,
+          name: 'cose',
+          idealEdgeLength: 120,
+          nodeOverlap: 30,
+          refresh: 20,
+          randomize: false,
+          componentSpacing: 150,
+          nodeRepulsion: () => 450000,
+          edgeElasticity: () => 150,
+          nestingFactor: 5,
+          gravity: 80,
+          numIter: 800,
+          initialTemp: 150,
+          coolingFactor: 0.95,
+          minTemp: 1.0,
+        };
+    }
+  }, []);
+
+  // Get current layout configuration
+  const layoutConfig = getLayoutConfig(selectedLayout);
 
   // Store and apply node positions
   const storeNodePositions = useCallback(() => {
@@ -908,7 +1082,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     try {
       // Stop any existing layouts first
       cy.stop();
-      
+
       // Apply stored positions before running layout
       applyStoredPositions();
 
@@ -951,12 +1125,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
             currentLayout.stop();
             currentLayout = null;
           }
-          
+
           // Stop any running layouts
           if (cy && !cy.destroyed()) {
             cy.stop();
           }
-          
+
           storeNodePositions();
           if (cleanup) cleanup();
         } catch (error) {
@@ -980,7 +1154,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         }
       };
     }
-  }, [currentElements, applyStoredPositions, storeNodePositions, setupCytoscapeEvents, animationEnabled]);
+  }, [currentElements, applyStoredPositions, storeNodePositions, setupCytoscapeEvents, animationEnabled, selectedLayout, layoutConfig]);
 
   // Toggle animation handler
   const toggleAnimation = useCallback(() => {
@@ -1003,6 +1177,73 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       isClosable: true,
     });
   }, [toast]);
+
+  // Handle layout change
+  const handleLayoutChange = useCallback((newLayout: string) => {
+    const cy = cyRef.current;
+    if (!cy || cy.destroyed()) return;
+
+    setSelectedLayout(newLayout);
+
+    // Store current positions before layout change
+    storeNodePositions();
+
+    // Get the new layout configuration
+    const newLayoutConfig = getLayoutConfig(newLayout);
+
+    // Apply the new layout with animation
+    const layoutOptions = {
+      ...newLayoutConfig,
+      animate: animationEnabled,
+      animationDuration: animationEnabled ? 800 : 0,
+      animationEasing: 'ease-out',
+      stop: () => {
+        // Store positions after layout completes
+        setTimeout(() => {
+          storeNodePositions();
+        }, 100);
+      }
+    };
+
+    try {
+      // Stop any running layouts
+      cy.stop();
+
+      // Run the new layout
+      const layout = cy.layout(layoutOptions);
+      layout.run();
+
+      // Show toast notification
+      const selectedOption = LAYOUT_OPTIONS.find(option => option.value === newLayout);
+      toast({
+        title: `Layout changed to ${selectedOption?.label || newLayout}`,
+        description: selectedOption?.description || '',
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // Store layout preference in session storage
+      sessionStorage.setItem('graph-layout-preference', newLayout);
+    } catch (error) {
+      console.error('Error applying layout:', error);
+      toast({
+        title: "Layout change failed",
+        description: "There was an error applying the new layout",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [animationEnabled, getLayoutConfig, storeNodePositions, toast]);
+
+  // Load layout preference on component mount
+  useEffect(() => {
+    const savedLayout = sessionStorage.getItem('graph-layout-preference');
+    if (savedLayout && LAYOUT_OPTIONS.some(option => option.value === savedLayout)) {
+      setSelectedLayout(savedLayout);
+    }
+  }, []);
 
   // Loading state
   if (loading) {
@@ -1063,25 +1304,73 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   return (
     <Box border="1px solid #eee" borderRadius="md" overflow="hidden" height="600px" width="100%" position="relative">
       {/* Controls */}
-      <Box position="absolute" top="10px" right="10px" zIndex="1" bg="white" p={2} borderRadius="md" boxShadow="sm">
-        <HStack spacing={3}>
-          {/* Transition speed control */}
-          <HStack>
-            <Tooltip label="Transition speed">
+      <Box
+        position="absolute"
+        top="10px"
+        right="10px"
+        zIndex="1"
+        bg="rgba(255, 255, 255, 0.95)"
+        backdropFilter="blur(10px)"
+        p={3}
+        borderRadius="xl"
+        boxShadow="lg"
+        border="1px solid"
+        borderColor="gray.200"
+      >
+        <VStack spacing={3} align="stretch">
+          {/* Layout Selection */}
+          <HStack spacing={2}>
+            <Tooltip label="Graph Layout Algorithm" placement="left">
               <IconButton
-                aria-label="Transition speed"
-                icon={<FaBolt />}
+                aria-label="Layout selector"
+                icon={<FaProjectDiagram />}
                 size="sm"
-                colorScheme="teal"
-                opacity="0.7"
+                colorScheme="brand"
+                variant="ghost"
+                opacity="0.8"
                 _hover={{ opacity: 1 }}
               />
             </Tooltip>
             <Select
               size="sm"
-              width="100px"
+              width="140px"
+              value={selectedLayout}
+              onChange={(e) => handleLayoutChange(e.target.value)}
+              bg="white"
+              borderColor="gray.300"
+              _hover={{ borderColor: "brand.400" }}
+              _focus={{ borderColor: "brand.500", boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)" }}
+            >
+              {LAYOUT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </HStack>
+
+          {/* Transition speed control */}
+          <HStack spacing={2}>
+            <Tooltip label="Animation Speed" placement="left">
+              <IconButton
+                aria-label="Transition speed"
+                icon={<FaBolt />}
+                size="sm"
+                colorScheme="cyber"
+                variant="ghost"
+                opacity="0.8"
+                _hover={{ opacity: 1 }}
+              />
+            </Tooltip>
+            <Select
+              size="sm"
+              width="140px"
               value={transitionSpeed}
               onChange={(e) => changeTransitionSpeed(parseInt(e.target.value))}
+              bg="white"
+              borderColor="gray.300"
+              _hover={{ borderColor: "cyber.400" }}
+              _focus={{ borderColor: "cyber.500", boxShadow: "0 0 0 1px var(--chakra-colors-cyber-500)" }}
             >
               <option value="200">Fast (200ms)</option>
               <option value="500">Medium (500ms)</option>
@@ -1091,18 +1380,22 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           </HStack>
 
           {/* Animation toggle button */}
-          <Tooltip label={animationEnabled ? "Disable animations" : "Enable animations"}>
-            <IconButton
-              aria-label="Toggle animations"
-              icon={<FaCog />}
-              size="sm"
-              onClick={toggleAnimation}
-              colorScheme={animationEnabled ? "blue" : "gray"}
-              opacity="0.7"
-              _hover={{ opacity: 1 }}
-            />
-          </Tooltip>
-        </HStack>
+          <HStack spacing={2} justify="center">
+            <Tooltip label={animationEnabled ? "Disable animations" : "Enable animations"} placement="left">
+              <IconButton
+                aria-label="Toggle animations"
+                icon={<FaCog />}
+                size="sm"
+                onClick={toggleAnimation}
+                colorScheme={animationEnabled ? "blue" : "gray"}
+                variant={animationEnabled ? "solid" : "outline"}
+                opacity="0.9"
+                _hover={{ opacity: 1, transform: "scale(1.05)" }}
+                transition="all 0.2s"
+              />
+            </Tooltip>
+          </HStack>
+        </VStack>
       </Box>
 
       <CytoscapeComponent
@@ -1113,7 +1406,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         cy={(cy: cytoscape.Core) => {
           try {
             cyRef.current = cy;
-            
+
             // Add error handling for cytoscape events
             cy.on('error', (event) => {
               console.warn('Cytoscape error:', event);
@@ -1142,7 +1435,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
             // Initialize event handlers immediately after cy is available
             const cleanup = setupCytoscapeEvents();
-            
+
             // Store this cleanup function to be called on unmount
             return () => {
               try {
