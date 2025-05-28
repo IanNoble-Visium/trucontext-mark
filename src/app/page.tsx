@@ -62,6 +62,8 @@ import {
   FaUnlock,
   FaPlay,
   FaPause,
+  FaChevronLeft,
+  FaChevronRight,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
@@ -163,9 +165,9 @@ export default function Home() {
         />
 
         <Flex h="100vh">
-          {/* Modern Sidebar */}
+          {/* Modern Collapsible Sidebar */}
           <Box
-            w={sidebarCollapsed ? "80px" : "320px"}
+            w={sidebarCollapsed ? "80px" : "380px"}
             bg={sidebarBg}
             backdropFilter="blur(20px)"
             borderRight="1px solid"
@@ -200,15 +202,17 @@ export default function Home() {
                   </Text>
                 </VStack>
               )}
-              <IconButton
-                aria-label="Toggle sidebar"
-                icon={<FaCog />}
-                size="sm"
-                variant="ghost"
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                _hover={{ bg: 'brand.50', color: 'brand.600' }}
-                transition="all 0.2s"
-              />
+              <Tooltip label={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>
+                <IconButton
+                  aria-label="Toggle sidebar"
+                  icon={sidebarCollapsed ? <FaChevronRight /> : <FaChevronLeft />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  _hover={{ bg: 'brand.50', color: 'brand.600' }}
+                  transition="all 0.2s"
+                />
+              </Tooltip>
             </Flex>
 
             {/* Control Panel */}
@@ -254,6 +258,45 @@ export default function Home() {
                   </Button>
                 </Flex>
               </Card>
+
+              {/* Executive Summary - KPI Stats */}
+              {!sidebarCollapsed && (
+                <Card
+                  bg={cardBg}
+                  backdropFilter="blur(10px)"
+                  border="1px solid"
+                  borderColor={borderColor}
+                  borderRadius="xl"
+                  p={4}
+                  transition="all 0.2s"
+                  _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                >
+                  <VStack align="start" spacing={4}>
+                    <Flex align="center" gap={3}>
+                      <Box
+                        p={2}
+                        borderRadius="lg"
+                        bg="brand.50"
+                        color="brand.600"
+                        animation="pulse 2s ease-in-out infinite"
+                      >
+                        <Icon as={FaChartLine} boxSize={4} />
+                      </Box>
+                      <VStack align="start" spacing={0}>
+                        <Text fontSize="md" fontWeight="bold" color={textColor}>
+                          Executive Summary
+                        </Text>
+                        <Text fontSize="xs" color={mutedColor}>
+                          Real-time threat metrics
+                        </Text>
+                      </VStack>
+                    </Flex>
+                    
+                    {/* Compact KPI Summary */}
+                    <KpiSummary />
+                  </VStack>
+                </Card>
+              )}
 
               {/* Quick Stats */}
               {!sidebarCollapsed && (
@@ -467,208 +510,152 @@ export default function Home() {
               </HStack>
             </Flex>
 
-            {/* Main Dashboard Grid */}
-            <Grid
-              templateColumns="1fr 2fr"
-              templateRows="auto 1fr"
-              gap={6}
+            {/* Main Visualization Area - Full Width */}
+            <Card
+              bg={cardBg}
+              backdropFilter="blur(20px)"
+              border="1px solid"
+              borderColor={borderColor}
+              borderRadius="2xl"
+              boxShadow="xl"
               h="calc(100vh - 200px)"
+              transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+              _hover={{
+                transform: "translateY(-2px)",
+                boxShadow: "2xl",
+                borderColor: accentColor,
+              }}
+              position="relative"
+              overflow="hidden"
             >
-              {/* KPI Summary */}
-              <GridItem>
-                <Card
-                  bg={cardBg}
-                  backdropFilter="blur(20px)"
-                  border="1px solid"
-                  borderColor={borderColor}
-                  borderRadius="2xl"
-                  boxShadow="xl"
-                  h="100%"
-                  transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                  _hover={{
-                    transform: "translateY(-4px)",
-                    boxShadow: "2xl",
-                    borderColor: accentColor,
-                  }}
-                  position="relative"
-                  overflow="hidden"
-                >
-                  <CardHeader pb={3}>
-                    <Flex align="center" gap={3}>
-                      <Box
-                        p={3}
-                        borderRadius="xl"
-                        bg="brand.50"
-                        color="brand.600"
-                        animation="pulse 2s ease-in-out infinite"
-                      >
-                        <Icon as={FaChartLine} boxSize={6} />
-                      </Box>
-                      <VStack align="start" spacing={0}>
-                        <Heading size="md" color={textColor} fontWeight="bold">
-                          Executive Summary
-                        </Heading>
-                        <Text fontSize="sm" color={mutedColor} fontWeight="medium">
-                          Real-time threat metrics
-                        </Text>
-                      </VStack>
-                    </Flex>
-                  </CardHeader>
-                  <CardBody pt={0}>
-                    <KpiSummary />
-                  </CardBody>
-                </Card>
-              </GridItem>
-
-              {/* Graph Visualization */}
-              <GridItem>
-                <Card
-                  bg={cardBg}
-                  backdropFilter="blur(20px)"
-                  border="1px solid"
-                  borderColor={borderColor}
-                  borderRadius="2xl"
-                  boxShadow="xl"
-                  h="100%"
-                  transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                  _hover={{
-                    transform: "translateY(-2px)",
-                    boxShadow: "2xl",
-                    borderColor: accentColor,
-                  }}
-                  position="relative"
-                  overflow="hidden"
-                >
-                  <CardHeader pb={3}>
-                    <Flex align="center" justify="space-between">
-                      <Flex align="center" gap={3}>
-                        <Box
-                          p={3}
-                          borderRadius="xl"
-                          bg="cyber.50"
-                          color="cyber.600"
-                          animation="pulse 2.5s ease-in-out infinite"
-                        >
-                          <Icon as={FaNetworkWired} boxSize={6} />
-                        </Box>
-                        <VStack align="start" spacing={0}>
-                          <Heading size="md" color={textColor} fontWeight="bold">
-                            Network Topology
-                          </Heading>
-                          <Text fontSize="sm" color={mutedColor} fontWeight="medium">
-                            Interactive graph visualization
-                          </Text>
-                        </VStack>
-                      </Flex>
-
-                      <HStack spacing={2}>
-                        <Box
-                          w={3}
-                          h={3}
-                          borderRadius="full"
-                          bg={activeTab === 0 ? "brand.500" : "gray.300"}
-                          transition="all 0.2s"
-                        />
-                        <Box
-                          w={3}
-                          h={3}
-                          borderRadius="full"
-                          bg={activeTab === 1 ? "brand.500" : "gray.300"}
-                          transition="all 0.2s"
-                        />
-                      </HStack>
-                    </Flex>
-                  </CardHeader>
-
-                  <CardBody pt={0} h="calc(100% - 100px)">
-                    <Tabs
-                      variant="soft-rounded"
-                      colorScheme="brand"
-                      size="sm"
-                      h="100%"
-                      display="flex"
-                      flexDirection="column"
-                      index={activeTab}
-                      onChange={setActiveTab}
+              <CardHeader pb={3}>
+                <Flex align="center" justify="space-between">
+                  <Flex align="center" gap={3}>
+                    <Box
+                      p={3}
+                      borderRadius="xl"
+                      bg="cyber.50"
+                      color="cyber.600"
+                      animation="pulse 2.5s ease-in-out infinite"
                     >
-                      <TabList
-                        mb={4}
-                        bg="rgba(248, 250, 252, 0.8)"
-                        backdropFilter="blur(10px)"
-                        p={2}
+                      <Icon as={FaNetworkWired} boxSize={6} />
+                    </Box>
+                    <VStack align="start" spacing={0}>
+                      <Heading size="md" color={textColor} fontWeight="bold">
+                        Network Topology
+                      </Heading>
+                      <Text fontSize="sm" color={mutedColor} fontWeight="medium">
+                        Interactive graph visualization
+                      </Text>
+                    </VStack>
+                  </Flex>
+
+                  <HStack spacing={2}>
+                    <Box
+                      w={3}
+                      h={3}
+                      borderRadius="full"
+                      bg={activeTab === 0 ? "brand.500" : "gray.300"}
+                      transition="all 0.2s"
+                    />
+                    <Box
+                      w={3}
+                      h={3}
+                      borderRadius="full"
+                      bg={activeTab === 1 ? "brand.500" : "gray.300"}
+                      transition="all 0.2s"
+                    />
+                  </HStack>
+                </Flex>
+              </CardHeader>
+
+              <CardBody pt={0} h="calc(100% - 100px)">
+                <Tabs
+                  variant="soft-rounded"
+                  colorScheme="brand"
+                  size="sm"
+                  h="100%"
+                  display="flex"
+                  flexDirection="column"
+                  index={activeTab}
+                  onChange={setActiveTab}
+                >
+                  <TabList
+                    mb={4}
+                    bg="rgba(248, 250, 252, 0.8)"
+                    backdropFilter="blur(10px)"
+                    p={2}
+                    borderRadius="xl"
+                    border="1px solid"
+                    borderColor="gray.200"
+                  >
+                    <Tab
+                      fontWeight="semibold"
+                      fontSize="sm"
+                      borderRadius="lg"
+                      transition="all 0.2s"
+                      _selected={{
+                        color: 'white',
+                        bg: 'brand.500',
+                        shadow: 'md',
+                        transform: 'scale(1.02)'
+                      }}
+                    >
+                      <Icon as={FaBolt} mr={2} boxSize={4} />
+                      Graph Topology
+                    </Tab>
+                    <Tab
+                      fontWeight="semibold"
+                      fontSize="sm"
+                      borderRadius="lg"
+                      transition="all 0.2s"
+                      _selected={{
+                        color: 'white',
+                        bg: 'brand.500',
+                        shadow: 'md',
+                        transform: 'scale(1.02)'
+                      }}
+                    >
+                      <Icon as={FaGlobe} mr={2} boxSize={4} />
+                      Geographic View
+                    </Tab>
+                  </TabList>
+
+                  <TabPanels flex="1" overflow="hidden">
+                    <TabPanel p={0} h="100%">
+                      <Box
+                        h="100%"
                         borderRadius="xl"
+                        overflow="hidden"
                         border="1px solid"
                         borderColor="gray.200"
+                        bg="white"
+                        boxShadow="inner"
                       >
-                        <Tab
-                          fontWeight="semibold"
-                          fontSize="sm"
-                          borderRadius="lg"
-                          transition="all 0.2s"
-                          _selected={{
-                            color: 'white',
-                            bg: 'brand.500',
-                            shadow: 'md',
-                            transform: 'scale(1.02)'
-                          }}
-                        >
-                          <Icon as={FaBolt} mr={2} boxSize={4} />
-                          Graph Topology
-                        </Tab>
-                        <Tab
-                          fontWeight="semibold"
-                          fontSize="sm"
-                          borderRadius="lg"
-                          transition="all 0.2s"
-                          _selected={{
-                            color: 'white',
-                            bg: 'brand.500',
-                            shadow: 'md',
-                            transform: 'scale(1.02)'
-                          }}
-                        >
-                          <Icon as={FaGlobe} mr={2} boxSize={4} />
-                          Geographic View
-                        </Tab>
-                      </TabList>
-
-                      <TabPanels flex="1" overflow="hidden">
-                        <TabPanel p={0} h="100%">
-                          <Box
-                            h="100%"
-                            borderRadius="xl"
-                            overflow="hidden"
-                            border="1px solid"
-                            borderColor="gray.200"
-                            bg="white"
-                            boxShadow="inner"
-                          >
-                            <GraphVisualization
-                              startTime={startTime}
-                              endTime={endTime}
-                              onDataRangeChange={handleEnhancedDataRangeChange}
-                            />
-                          </Box>
-                        </TabPanel>
-                        <TabPanel p={0} h="100%">
-                          <Box
-                            h="100%"
-                            borderRadius="xl"
-                            overflow="hidden"
-                            border="1px solid"
-                            borderColor="gray.200"
-                            bg="white"
-                            boxShadow="inner"
-                          >
-                            <GeoMap />
-                          </Box>
-                        </TabPanel>
-                      </TabPanels>
-                    </Tabs>
-                  </CardBody>
-                </Card>
-              </GridItem>
-            </Grid>
+                        <GraphVisualization
+                          startTime={startTime}
+                          endTime={endTime}
+                          onDataRangeChange={handleEnhancedDataRangeChange}
+                        />
+                      </Box>
+                    </TabPanel>
+                    <TabPanel p={0} h="100%">
+                      <Box
+                        h="100%"
+                        borderRadius="xl"
+                        overflow="hidden"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        bg="white"
+                        boxShadow="inner"
+                      >
+                        <GeoMap />
+                      </Box>
+                    </TabPanel>
+                  </TabPanels>
+                </Tabs>
+              </CardBody>
+            </Card>
           </Box>
         </Flex>
 
