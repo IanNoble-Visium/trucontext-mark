@@ -67,7 +67,18 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
   const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000; // One month ago
 
   // Initialize all state variables at the top
-  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>([oneMonthAgo, now]);
+  // Use full time range if props are available, otherwise use safe defaults
+  const [currentTimeRange, setCurrentTimeRange] = useState<[number, number]>(() => {
+    // If minTimestamp and maxTimestamp are provided and valid, use them
+    if (minTimestamp && maxTimestamp && minTimestamp < maxTimestamp &&
+        minTimestamp > 0 && maxTimestamp > 0) {
+      console.log(`TimeSlider: Initializing with full dataset range: ${new Date(minTimestamp).toISOString()} - ${new Date(maxTimestamp).toISOString()}`);
+      return [minTimestamp, maxTimestamp];
+    }
+    // Otherwise use safe defaults
+    console.log(`TimeSlider: Initializing with safe default range: ${new Date(oneMonthAgo).toISOString()} - ${new Date(now).toISOString()}`);
+    return [oneMonthAgo, now];
+  });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [animationInterval, setAnimationInterval] = useState<TimeoutType | null>(null);
@@ -89,7 +100,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
   const sliderRef = useRef<HTMLDivElement>(null);
   const dragMoveHandler = useRef<(e: MouseEvent) => void>();
   const dragEndHandler = useRef<(e: MouseEvent) => void>();
-  
+
   // Create a comprehensive drag state ref that contains all needed values
   // This prevents issues with React state updates not being immediately available
   const dragStateRef = useRef<{
@@ -236,10 +247,10 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
     const startTime = currentTimeRange[0];
     const endTime = currentTimeRange[1];
     const windowDuration = endTime - startTime; // Keep track of the original window duration
-    
+
     // Calculate the maximum animation end point, preserving the window size
     const animationEndTime = Math.min(maxTimestamp - windowDuration, currentTime - windowDuration);
-    
+
     // Start from the current position
     let currentPosition = startTime;
 
@@ -281,7 +292,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
       // Calculate new start and end times while preserving the original window duration
       const newStart = currentPosition;
       const newEnd = newStart + windowDuration;
-      
+
       // Validate the new range is within bounds
       if (newEnd <= maxTimestamp) {
         setCurrentTimeRange([newStart, newEnd]);
@@ -303,12 +314,13 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
     }
   }, [isPlaying, startAnimation, stopAnimation]);
 
-  // Initial range setup based on props
+  // Initial range setup based on props - use full time range by default
   useEffect(() => {
-    // Clamp initial range to min/max
-    const defaultStart = Math.max(minTimestamp, maxTimestamp - 24 * 60 * 60 * 1000);
-    setCurrentTimeRange([defaultStart, maxTimestamp]);
-    updateTimeRange(defaultStart, maxTimestamp, true);
+    // Use the full time range from minTimestamp to maxTimestamp
+    // This ensures all nodes and relationships are visible on first load
+    console.log(`TimeSlider: Setting initial range to full dataset range: ${new Date(minTimestamp).toISOString()} - ${new Date(maxTimestamp).toISOString()}`);
+    setCurrentTimeRange([minTimestamp, maxTimestamp]);
+    updateTimeRange(minTimestamp, maxTimestamp, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minTimestamp, maxTimestamp]);
 
@@ -476,7 +488,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
       const finalStart = currentTimeRange[0];
       const finalEnd = currentTimeRange[1];
       console.log(`Drag completed: ${new Date(finalStart).toISOString()} - ${new Date(finalEnd).toISOString()}`);
-      
+
       // Dispatch drag end event
       try {
         const event = new CustomEvent('timelinedragstate', {
@@ -514,7 +526,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
     document.addEventListener('mousemove', dragMoveHandler.current!, true);
     document.addEventListener('mouseup', dragEndHandler.current!, true);
     console.log(`Drag started: ${new Date(exactStart).toISOString()} - ${new Date(exactEnd).toISOString()}`);
-    
+
     // Dispatch drag state event
     try {
       const event = new CustomEvent('timelinedragstate', {
@@ -553,7 +565,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
       }
     `;
     document.head.appendChild(styleElement);
-    
+
     // Cleanup function to remove the style element
     return () => {
       document.head.removeChild(styleElement);
@@ -747,7 +759,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
               <RangeSliderThumb index={0} zIndex={2} />
               <RangeSliderThumb index={1} zIndex={2} />
             </RangeSlider>
-            
+
             {/* Separate overlay for the draggable center area */}
             <Box
               position="absolute"
@@ -765,15 +777,15 @@ const TimeSlider: React.FC<TimeSliderProps> = ({ minTimestamp, maxTimestamp, onT
               data-testid="center-drag-area"
             >
               {/* Visual indicator for the drag handle */}
-              <Flex 
-                height="100%" 
-                alignItems="center" 
+              <Flex
+                height="100%"
+                alignItems="center"
                 justifyContent="center"
                 pointerEvents="none"
               >
-                <Box 
-                  width="24px" 
-                  height="12px" 
+                <Box
+                  width="24px"
+                  height="12px"
                   borderRadius="sm"
                   border="2px solid"
                   borderColor="blue.500"

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { 
-  Box, 
-  Heading, 
-  Text, 
-  VStack, 
+import {
+  Box,
+  Heading,
+  Text,
+  VStack,
   Divider,
   Tabs,
   TabList,
@@ -30,7 +30,7 @@ export default function Home() {
   // Initialize with safe default values to prevent 0,0 issues
   const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
   const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
-  
+
   // State to hold the time range from the slider - initialized with safe values
   const [startTime, setStartTime] = useState<number>(safeStartTime);
   const [endTime, setEndTime] = useState<number>(safeCurrentTime);
@@ -84,11 +84,13 @@ export default function Home() {
 
   // Callback to receive min/max from GraphVisualization
   const handleDataRangeChange = useCallback((min: number, max: number) => {
+    console.log(`Home: Received data range from GraphVisualization: ${new Date(min).toISOString()} - ${new Date(max).toISOString()}`);
     setMinTimestamp(min);
     setMaxTimestamp(max);
-    // Optionally, clamp current time range if out of bounds
-    setStartTime(prev => Math.max(min, Math.min(prev, max)));
-    setEndTime(prev => Math.max(min, Math.min(prev, max)));
+    // Set the time range to the full dataset range to show all data by default
+    console.log(`Home: Setting time range to full dataset range for initial display`);
+    setStartTime(min);
+    setEndTime(max);
   }, []);
 
   return (
@@ -135,7 +137,7 @@ export default function Home() {
         <Box p={5} shadow="md" borderWidth="1px" borderRadius="md">
           <Heading size="md" mb={3}>Interactive Graph Visualization</Heading>
           <Text mb={4} color="gray.500">Explore connections and entities within the selected time range or view their geographic distribution.</Text>
-          
+
           <Tabs variant="enclosed" colorScheme="blue" isFitted>
             <TabList mb={4}>
               <Tab fontWeight="semibold" _selected={{ color: 'blue.600', borderColor: 'blue.600', borderBottomColor: 'white' }}>
