@@ -6,6 +6,7 @@ import { Box, Spinner, Text, useToast, IconButton, Tooltip, HStack, Select, VSta
 import { FaCog, FaBolt, FaProjectDiagram } from 'react-icons/fa';
 import cytoscape from 'cytoscape'; // Import core cytoscape
 import { getIconPath } from '@/lib/iconUtils';
+import { useTimeline } from '@/contexts/TimelineContext';
 
 // Import layout extensions
 import dagre from 'cytoscape-dagre';
@@ -120,6 +121,9 @@ function normalizeElements(elements: cytoscape.ElementDefinition[]) {
 }
 
 const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endTime, onDataRangeChange }) => {
+  // Get timeline context for playing state
+  const { isPlaying } = useTimeline();
+
   // Default safe values
   const safeCurrentTime = new Date('2023-12-31T23:59:59.999Z').getTime();
   const safeStartTime = new Date('2023-12-30T00:00:00.000Z').getTime();
@@ -133,6 +137,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const [animationEnabled, setAnimationEnabled] = useState<boolean>(true);
   const [transitionSpeed, setTransitionSpeed] = useState<number>(500); // Transition speed in ms
   const [initialDataFetched, setInitialDataFetched] = useState<boolean>(false);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true); // Flag to prevent animations during initial load
   const [lastFetchParams, setLastFetchParams] = useState<{ start: number, end: number } | null>(null);
   const [dataFetchAttempted, setDataFetchAttempted] = useState<boolean>(false); // Flag to prevent multiple fetch attempts
   const [selectedLayout, setSelectedLayout] = useState<string>('cose'); // Current layout selection
@@ -231,18 +236,20 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           return 0;
         });
 
-        // Add icon path for each node and store elements
+        // Add enhanced icon path for each node and store elements
         const enhanced = sortedElements.map(el => {
           if (el.group === 'nodes') {
-            // Ensure we're getting the icon path correctly
+            // Use enhanced icon mapping with PNG format
             const iconPath = getIconPath(el.data?.type);
 
-            // Add an error handler for the icon
+            // Add enhanced icon handling
             return {
               ...el,
               data: {
                 ...el.data,
                 icon: iconPath,
+                // Store original type for debugging and fallback handling
+                originalType: el.data?.type,
                 // Add a fallback icon in case the main one fails to load
                 fallbackIcon: '/icons/unknown.png'
               }
@@ -277,6 +284,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         if (onDataRangeChangeRef.current) {
           onDataRangeChangeRef.current(minTimestamp, maxTimestamp);
         }
+
+        // Set a timeout to complete initialization after data range is set
+        setTimeout(() => {
+          setIsInitializing(false);
+          console.log('GraphVisualization: Initialization completed');
+        }, 100);
       }
     } catch (e: any) {
       console.error("Failed to fetch all graph data:", e);
@@ -292,6 +305,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       setInitialDataFetched(false);
       // Reset the flag on error so user can retry
       setDataFetchAttempted(false);
+      setIsInitializing(false); // Also complete initialization on error
     } finally {
       setLoading(false);
     }
@@ -417,10 +431,20 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         console.warn("Elements is not an array:", data.elements);
         setElements([]);
       } else {
-        // Store all elements from the API with icon paths
+        // Store all elements from the API with enhanced icon paths
         const enhanced = data.elements.map((el: any) => {
           if (el.group === 'nodes') {
-            return { ...el, data: { ...el.data, icon: getIconPath(el.data?.type) } };
+            // Use enhanced icon mapping with PNG format
+            const iconPath = getIconPath(el.data?.type);
+            return {
+              ...el,
+              data: {
+                ...el.data,
+                icon: iconPath,
+                // Store original type for debugging
+                originalType: el.data?.type
+              }
+            };
           }
           return el;
         });
@@ -457,8 +481,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
   // Handle time range changes
   useEffect(() => {
-    // If we haven't fetched initial data yet, skip filtering
-    if (!initialDataFetched) {
+    // If we haven't fetched initial data yet or still initializing, skip filtering
+    if (!initialDataFetched || isInitializing) {
       return;
     }
 
@@ -479,7 +503,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
     // Filter data locally with validated times
     filterDataByTimeRange(safeStart, safeEnd);
-  }, [startTime, endTime, initialDataFetched, filterDataByTimeRange, safeStartTime, safeCurrentTime]);
+  }, [startTime, endTime, initialDataFetched, isInitializing, filterDataByTimeRange, safeStartTime, safeCurrentTime]);
 
   // Enhanced stylesheet (keep as is)
   const stylesheet: any[] = [
@@ -612,11 +636,14 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
   // Function to get layout configuration based on selected layout
   const getLayoutConfig = useCallback((layoutName: string) => {
+    // Only allow animations when timeline is playing AND not initializing AND animations are enabled
+    const shouldAnimate = !isInitializing && animationEnabled && isPlaying;
+
     const baseConfig = {
       fit: true,
       padding: 40,
-      animate: false,
-      animationDuration: 0,
+      animate: shouldAnimate,
+      animationDuration: shouldAnimate ? 600 : 0,
     };
 
     switch (layoutName) {
@@ -653,18 +680,20 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           gravity: 0.25,
           numIter: 2500,
           tile: true,
-          animate: 'end',
-          animationEasing: 'ease-out',
-          animationDuration: 1000,
+          // Override any built-in animation settings
+          animate: shouldAnimate,
+          animationEasing: shouldAnimate ? 'ease-out' : undefined,
+          animationDuration: shouldAnimate ? 1000 : 0,
         };
 
       case 'cola':
         return {
           ...baseConfig,
           name: 'cola',
-          animate: true,
-          refresh: 1,
-          maxSimulationTime: 4000,
+          // Override any built-in animation settings
+          animate: shouldAnimate,
+          refresh: shouldAnimate ? 1 : 0,
+          maxSimulationTime: shouldAnimate ? 4000 : 0,
           ungrabifyWhileSimulating: false,
           randomize: false,
           avoidOverlap: true,
@@ -724,7 +753,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           cols: undefined,
           position: (_node: any) => ({ row: 0, col: 0 }),
           sort: undefined,
+          // Ensure no animation for grid layout
           animate: false,
+          animationDuration: 0,
         };
 
       case 'breadthfirst':
@@ -768,10 +799,21 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           minTemp: 1.0,
         };
     }
-  }, []);
+  }, [isInitializing, animationEnabled, isPlaying]);
 
   // Get current layout configuration
   const layoutConfig = getLayoutConfig(selectedLayout);
+
+  // Create a static layout configuration that prevents any automatic layout execution
+  const staticLayoutConfig = {
+    name: 'preset',
+    positions: undefined, // Will use current positions
+    fit: false,
+    animate: false,
+    animationDuration: 0,
+    zoom: undefined,
+    pan: undefined,
+  };
 
   // Store and apply node positions
   const storeNodePositions = useCallback(() => {
@@ -839,11 +881,16 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         try {
           const nodeData = event.target.data();
           console.log('Node clicked:', nodeData);
+
+          // Enhanced node information display
+          const iconInfo = nodeData.icon ? nodeData.icon.split('/').pop() : 'N/A';
+          const originalType = nodeData.originalType || nodeData.type;
+
           toast({
-            title: `Node Clicked: ${nodeData.label || nodeData.id}`,
-            description: `Type: ${nodeData.type || 'N/A'}, Risk: ${nodeData.riskLevel || 'N/A'}`,
+            title: `Node: ${nodeData.label || nodeData.id}`,
+            description: `Type: ${nodeData.type || 'N/A'} | Risk: ${nodeData.riskLevel || 'N/A'} | Icon: ${iconInfo}`,
             status: 'info',
-            duration: 3000,
+            duration: 4000,
             isClosable: true,
           });
         } catch (error) {
@@ -958,6 +1005,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   // Handle smooth transitions between time ranges
   useEffect(() => {
     if (!elements.length && !currentElements.length) return;
+    if (isInitializing) return; // Skip transitions during initialization
 
     try {
       // Compare current and new elements to determine what changed
@@ -981,17 +1029,19 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         ...elementsToRemove.filter(el => el.group === 'nodes')
       ];
 
-      // For real-time updates, use a shorter transition duration during active dragging
-      const effectiveTransitionSpeed = Math.min(transitionSpeed, 200);
-
       // Process updates immediately
       if (sortedElementsToRemove.length > 0 || sortedElementsToAdd.length > 0) {
+        console.log(`GraphVisualization: Element changes detected - Adding: ${sortedElementsToAdd.length}, Removing: ${sortedElementsToRemove.length}, Timeline playing: ${isPlaying}`);
+
         // Update the elements state immediately
         setCurrentElements(elements);
 
-        // Apply animations to the updated elements
+        // CRITICAL: Only apply animations if timeline is playing
         const cy = cyRef.current;
-        if (cy && animationEnabled) {
+        if (cy && animationEnabled && isPlaying) {
+          // For real-time updates, use a shorter transition duration during active dragging
+          const effectiveTransitionSpeed = Math.min(transitionSpeed, 200);
+
           try {
             // Find newly added elements
             const newEls = cy.elements().filter(el =>
@@ -1012,14 +1062,30 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           } catch (error) {
             console.error("Error animating elements:", error);
           }
+        } else if (cy && !isPlaying) {
+          // When timeline is paused, just set opacity to 1 immediately without animation
+          console.log('GraphVisualization: Timeline paused, setting element opacity without animation');
+          try {
+            const newEls = cy.elements().filter(el =>
+              sortedElementsToAdd.some(addEl => addEl.data.id === el.id())
+            );
+            if (newEls.length > 0) {
+              newEls.style({ 'opacity': 1 });
+            }
+          } catch (error) {
+            console.error("Error setting element opacity:", error);
+          }
         }
+      } else {
+        // No changes, just update current elements
+        setCurrentElements(elements);
       }
     } catch (error) {
       console.error("Error in transition effect:", error);
       // Fallback: just set the elements directly
       setCurrentElements(elements);
     }
-  }, [elements, currentElements, animationEnabled, transitionSpeed]);
+  }, [elements, currentElements, animationEnabled, transitionSpeed, isInitializing, isPlaying]);
 
   // Add a listener for active dragging state from TimeSlider
   useEffect(() => {
@@ -1071,34 +1137,66 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     };
   }, []);
 
-  // Setup cytoscape and handle visualization
+  // Setup cytoscape events (separate from layout handling)
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || cy.destroyed()) return;
+
+    // Setup events only
+    const cleanup = setupCytoscapeEvents();
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [setupCytoscapeEvents]);
+
+  // Handle layout execution separately and only when necessary
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || cy.destroyed() || !currentElements.length) return;
 
     let currentLayout: cytoscape.Layouts | null = null;
     let isCleanedUp = false;
 
     try {
-      // Stop any existing layouts first
+      // CRITICAL: Stop any existing layouts first - this prevents unwanted movement
       cy.stop();
 
       // Apply stored positions before running layout
       applyStoredPositions();
 
-      // Run layout only if we have nodes
+      // CRITICAL: When timeline is paused, do NOT run any layouts at all
+      if (!isPlaying && !isInitializing) {
+        console.log('GraphVisualization: Timeline paused, skipping all layout execution');
+        return () => {
+          isCleanedUp = true;
+          try {
+            if (cy && !cy.destroyed()) {
+              cy.stop();
+            }
+            storeNodePositions();
+          } catch (error) {
+            console.warn('Error during paused state cleanup:', error);
+          }
+        };
+      }
+
+      // Run layout only if we have nodes AND timeline is playing or initializing
       const nodes = cy.nodes();
       if (nodes.length > 0) {
         const hasNewNodes = nodes.some(node => !nodePositionsRef.current[(node as cytoscape.NodeSingular).id()]);
 
-        if (hasNewNodes) {
+        // Only run layout for new nodes if timeline is playing OR during initialization
+        if (hasNewNodes && (isPlaying || isInitializing)) {
+          console.log('GraphVisualization: Running layout for new nodes (timeline playing or initializing)');
+          const shouldAnimate = !isInitializing && animationEnabled && isPlaying;
+
           const layoutOptions = {
             ...layoutConfig,
-            animate: animationEnabled,
-            animationDuration: animationEnabled ? 600 : 0,
+            animate: shouldAnimate,
+            animationDuration: shouldAnimate ? 600 : 0,
             stop: () => {
               if (!isCleanedUp) {
-                // Use setTimeout to avoid immediate callback issues
                 setTimeout(() => {
                   if (!isCleanedUp) {
                     storeNodePositions();
@@ -1110,11 +1208,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
           currentLayout = cy.layout(layoutOptions);
           currentLayout.run();
+        } else {
+          // No new nodes or timeline paused, just apply stored positions
+          applyStoredPositions();
         }
       }
-
-      // Setup events
-      const cleanup = setupCytoscapeEvents();
 
       // Return cleanup function
       return () => {
@@ -1132,15 +1230,13 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           }
 
           storeNodePositions();
-          if (cleanup) cleanup();
         } catch (error) {
-          console.warn('Error during cytoscape cleanup:', error);
+          console.warn('Error during layout cleanup:', error);
         }
       };
     } catch (error) {
-      console.error('Error in cytoscape setup:', error);
+      console.error('Error in layout setup:', error);
       isCleanedUp = true;
-      // Return cleanup function even on error
       return () => {
         try {
           if (currentLayout) {
@@ -1154,7 +1250,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         }
       };
     }
-  }, [currentElements, applyStoredPositions, storeNodePositions, setupCytoscapeEvents, animationEnabled, selectedLayout, layoutConfig]);
+  }, [currentElements, applyStoredPositions, storeNodePositions, animationEnabled, selectedLayout, layoutConfig, isInitializing, isPlaying]);
 
   // Toggle animation handler
   const toggleAnimation = useCallback(() => {
@@ -1191,11 +1287,12 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     // Get the new layout configuration
     const newLayoutConfig = getLayoutConfig(newLayout);
 
-    // Apply the new layout with animation
+    // Apply the new layout with animation (only if timeline is playing)
+    const shouldAnimate = animationEnabled && isPlaying;
     const layoutOptions = {
       ...newLayoutConfig,
-      animate: animationEnabled,
-      animationDuration: animationEnabled ? 800 : 0,
+      animate: shouldAnimate,
+      animationDuration: shouldAnimate ? 800 : 0,
       animationEasing: 'ease-out',
       stop: () => {
         // Store positions after layout completes
@@ -1235,7 +1332,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         isClosable: true,
       });
     }
-  }, [animationEnabled, getLayoutConfig, storeNodePositions, toast]);
+  }, [animationEnabled, getLayoutConfig, storeNodePositions, toast, isPlaying]);
 
   // Load layout preference on component mount
   useEffect(() => {
@@ -1402,7 +1499,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         elements={normalizeElements(currentElements)}
         style={{ width: '100%', height: '100%' }}
         stylesheet={stylesheet}
-        layout={layoutConfig}
+        layout={isPlaying || isInitializing ? layoutConfig : staticLayoutConfig}
         cy={(cy: cytoscape.Core) => {
           try {
             cyRef.current = cy;

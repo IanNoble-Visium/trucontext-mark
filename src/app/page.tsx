@@ -59,7 +59,7 @@ import {
 } from "@/components/ui/LoadingStates";
 
 export default function Home() {
-  const { startTime, endTime, handleDataRangeChange } = useTimeline();
+  const { startTime, endTime, isInitialized, handleDataRangeChange } = useTimeline();
 
   // Enhanced state management
   const [isLoading, setIsLoading] = useState(true);
@@ -67,6 +67,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState(0);
   const [dataStats, setDataStats] = useState({ nodes: 0, edges: 0, lastUpdate: null as string | null });
   const [isLiveMode, setIsLiveMode] = useState(true);
+  const [currentTime, setCurrentTime] = useState<string>('');
   const { isOpen: showStats, onToggle: toggleStats } = useDisclosure();
 
   // Modern theme-aware colors with glassmorphism
@@ -85,6 +86,15 @@ export default function Home() {
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1200);
     return () => clearTimeout(timer);
+  }, []);
+
+  // Set current time on client side only to prevent hydration mismatch
+  useEffect(() => {
+    setCurrentTime(new Date().toLocaleTimeString());
+    const interval = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString());
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // Enhanced data range handler with stats
@@ -170,7 +180,7 @@ export default function Home() {
                       <Text>•</Text>
                       <Text>{dataStats.edges} edges</Text>
                       <Text>•</Text>
-                      <Text>Last updated: {new Date().toLocaleTimeString()}</Text>
+                      <Text>Last updated: {currentTime || '--:--:--'}</Text>
                     </HStack>
                   </Collapse>
                 </HStack>
@@ -353,7 +363,7 @@ export default function Home() {
                         bg="white"
                         boxShadow="inner"
                       >
-                        <GeoMap />
+                        <GeoMap isActive={activeTab === 1} />
                       </Box>
                     </TabPanel>
                   </TabPanels>

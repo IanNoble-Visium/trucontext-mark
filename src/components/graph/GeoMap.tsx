@@ -1,13 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
-import { Icon, DivIcon } from 'leaflet';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { Icon, DivIcon, LatLngBounds } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { 
-  Box, 
-  Spinner, 
-  Text, 
-  Alert, 
-  AlertIcon, 
+import '@/styles/leaflet-icons.css';
+import {
+  Box,
+  Spinner,
+  Text,
+  Alert,
+  AlertIcon,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -21,6 +22,7 @@ import {
   useDisclosure
 } from '@chakra-ui/react';
 import { getIconPath } from '@/lib/iconUtils';
+import { useTimeline } from '@/contexts/TimelineContext';
 
 // Define the structure for a node with geographic coordinates
 interface GraphNode {
@@ -30,6 +32,7 @@ interface GraphNode {
   longitude: number;
   icon: string;
   type?: string;
+  timestamp?: number | string; // Add timestamp for time-based filtering
 }
 
 // Define the structure for a relationship between nodes
@@ -39,39 +42,142 @@ interface GraphRelationship {
   target: string;
   type: string;
   label?: string;
+  timestamp?: number | string; // Add timestamp for time-based filtering
 }
 
 // Define regions for coordinate generation
 type Region = 'global' | 'us' | 'eu' | 'africa' | 'asia';
 
+// Component to handle map resizing and centering
+const MapController: React.FC<{ nodes: GraphNode[]; isActive?: boolean }> = ({ nodes, isActive }) => {
+  const map = useMap();
+  const [hasInitialized, setHasInitialized] = useState(false);
+  const [lastNodeCount, setLastNodeCount] = useState(0);
+
+  // Function to center map on nodes
+  const centerMapOnNodes = useCallback(() => {
+    console.log('MapController: Attempting to center map on nodes', nodes.length);
+    if (nodes.length > 0) {
+      const bounds = new LatLngBounds([]);
+      nodes.forEach(node => {
+        bounds.extend([node.latitude, node.longitude]);
+      });
+
+      if (bounds.isValid()) {
+        console.log('MapController: Fitting bounds with padding');
+        map.fitBounds(bounds, { padding: [20, 20] });
+      } else {
+        console.log('MapController: Bounds are not valid');
+      }
+    } else {
+      console.log('MapController: No nodes to center on');
+    }
+  }, [map, nodes]);
+
+  // Initial setup and node changes - only center when nodes actually change
+  useEffect(() => {
+    // Only center if nodes count changed significantly or first time
+    if (!hasInitialized || Math.abs(nodes.length - lastNodeCount) > 0) {
+      console.log('MapController: Initial setup or nodes changed');
+      // Invalidate map size when component mounts or updates
+      const timer = setTimeout(() => {
+        console.log('MapController: Invalidating size and centering');
+        map.invalidateSize();
+        centerMapOnNodes();
+        setHasInitialized(true);
+        setLastNodeCount(nodes.length);
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }
+  }, [map, nodes, hasInitialized, lastNodeCount, centerMapOnNodes]);
+
+  // Handle window resize - only invalidate size, don't re-center
+  useEffect(() => {
+    const handleResize = () => {
+      console.log('MapController: Window resized, invalidating size');
+      map.invalidateSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [map]);
+
+  // Handle visibility changes (when browser tab becomes visible) - only if active
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isActive && hasInitialized) {
+        console.log('MapController: Browser tab became visible, re-centering');
+        // When tab becomes visible, invalidate size and re-center
+        setTimeout(() => {
+          map.invalidateSize();
+          centerMapOnNodes();
+        }, 200);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [map, isActive, hasInitialized, centerMapOnNodes]);
+
+  // Handle tab activation - only when first becoming active
+  useEffect(() => {
+    if (isActive && !hasInitialized) {
+      console.log('MapController: Tab became active, forcing map update');
+      // When the Geographic View tab becomes active for the first time, force a complete refresh
+      setTimeout(() => {
+        map.invalidateSize();
+        centerMapOnNodes();
+        setHasInitialized(true);
+      }, 100);
+    }
+  }, [isActive, map, hasInitialized, centerMapOnNodes]);
+
+  return null;
+};
+
 // Create a fallback icon function that returns a div icon with the node type
 const createFallbackIcon = (nodeType: string = 'unknown') => {
+  const normalizedType = nodeType.toLowerCase().trim();
+
+  // Enhanced color mapping with more node types
   const colors: Record<string, string> = {
     server: '#3182CE', // blue
     client: '#38A169', // green
     workstation: '#DD6B20', // orange
     router: '#D53F8C', // pink
     database: '#805AD5', // purple
+    user: '#D69E2E', // yellow
+    threatactor: '#E53E3E', // red
+    firewall: '#DD6B20', // orange
+    switch: '#319795', // teal
+    application: '#4299E1', // light blue
+    sensor: '#48BB78', // light green
+    plc: '#ED8936', // orange
+    scada: '#9F7AEA', // purple
+    device: '#4FD1C7', // cyan
     unknown: '#718096', // gray
   };
-  
-  const color = colors[nodeType.toLowerCase()] || colors.unknown;
-  
+
+  const color = colors[normalizedType] || colors.unknown;
+  const cssClass = `node-type-${normalizedType}`;
+
   return new DivIcon({
-    html: `<div style="
-      background-color: ${color}; 
-      color: white; 
-      border-radius: 50%; 
-      width: 30px; 
-      height: 30px; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
+    html: `<div class="${cssClass}" style="
+      background-color: ${color};
+      color: white;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-weight: bold;
       border: 2px solid white;
       box-shadow: 0 0 4px rgba(0,0,0,0.4);
+      font-size: 12px;
     ">${nodeType.charAt(0).toUpperCase()}</div>`,
-    className: '',
+    className: 'leaflet-div-icon-fallback',
     iconSize: [30, 30],
     iconAnchor: [15, 15]
   });
@@ -89,7 +195,7 @@ const getRelationshipColor = (relType: string): string => {
     RelativeTo: '#e67e22',   // dark orange
     default: '#95a5a6'       // gray
   };
-  
+
   return colors[relType] || colors.default;
 };
 
@@ -149,53 +255,97 @@ const landCoordinates = {
     { lat: 34.0522, lng: -118.2437 }, // Los Angeles
     { lat: 51.2538, lng: -85.3232 },  // Ontario
     { lat: 19.4326, lng: -99.1332 },  // Mexico City
-    
+
     // South America
     { lat: -23.5505, lng: -46.6333 }, // São Paulo
     { lat: -34.6037, lng: -58.3816 }, // Buenos Aires
     { lat: -33.4489, lng: -70.6693 }, // Santiago
-    
+
     // Europe
     { lat: 51.5074, lng: -0.1278 },   // London
     { lat: 48.8566, lng: 2.3522 },    // Paris
     { lat: 55.7558, lng: 37.6173 },   // Moscow
-    
+
     // Asia
     { lat: 35.6762, lng: 139.6503 },  // Tokyo
     { lat: 39.9042, lng: 116.4074 },  // Beijing
     { lat: 28.6139, lng: 77.2090 },   // New Delhi
-    
+
     // Africa
     { lat: -33.9249, lng: 18.4241 },  // Cape Town
     { lat: 30.0444, lng: 31.2357 },   // Cairo
-    
+
     // Oceania
     { lat: -33.8688, lng: 151.2093 }, // Sydney
     { lat: -36.8485, lng: 174.7633 }, // Auckland
   ]
 };
 
-const GeoMap: React.FC = () => {
-  const [nodes, setNodes] = useState<GraphNode[]>([]);
-  const [relationships, setRelationships] = useState<GraphRelationship[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+interface GeoMapProps {
+  isActive?: boolean;
+}
+
+const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
+  // Get timeline context for time-based filtering
+  const { startTime, endTime } = useTimeline();
+
+  // Original data (unfiltered)
+  const [allNodes, setAllNodes] = useState<GraphNode[]>([]);
+  const [allRelationships, setAllRelationships] = useState<GraphRelationship[]>([]);
+
+  // Filtered data (displayed on map)
+  const [filteredNodes, setFilteredNodes] = useState<GraphNode[]>([]);
+  const [filteredRelationships, setFilteredRelationships] = useState<GraphRelationship[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [nodesWithoutCoords, setNodesWithoutCoords] = useState<any[]>([]);
   const [selectedRegion, setSelectedRegion] = useState<Region>('global');
   const { isOpen, onOpen, onClose } = useDisclosure();
-  const mapRef = useRef<any>(null);
-  const [hasAttemptedFetch, setHasAttemptedFetch] = useState<boolean>(false);
-  const [useIconFallbacks, setUseIconFallbacks] = useState<boolean>(false);
-  const [showRelationships, setShowRelationships] = useState<boolean>(true);
+  const mapRef = useRef<L.Map | null>(null);
+  const [mapKey, setMapKey] = useState(0);
+
+  // Helper function to parse timestamp
+  const parseTimestamp = (timestamp: number | string | undefined): number => {
+    if (!timestamp) return 0;
+    if (typeof timestamp === 'number') return timestamp;
+    return new Date(timestamp).getTime();
+  };
+
+  // Filter nodes and relationships based on the time range
+  useEffect(() => {
+    // Filter nodes based on time range
+    const timeFilteredNodes = allNodes.filter(node => {
+      if (!node.timestamp) return true; // Include nodes without timestamp
+      const nodeTime = parseTimestamp(node.timestamp);
+      return nodeTime >= startTime && nodeTime <= endTime;
+    });
+
+    // Filter relationships based on time range
+    const timeFilteredRelationships = allRelationships.filter(rel => {
+      if (!rel.timestamp) return true; // Include relationships without timestamp
+      const relTime = parseTimestamp(rel.timestamp);
+      return relTime >= startTime && relTime <= endTime;
+    });
+
+    // Also filter relationships to only include those where both nodes are visible
+    const visibleNodeIds = new Set(timeFilteredNodes.map(n => n.id));
+    const finalFilteredRelationships = timeFilteredRelationships.filter(rel =>
+      visibleNodeIds.has(rel.source) && visibleNodeIds.has(rel.target)
+    );
+
+    setFilteredNodes(timeFilteredNodes);
+    setFilteredRelationships(finalFilteredRelationships);
+
+    console.log(`GeoMap: Filtered to ${timeFilteredNodes.length} nodes and ${finalFilteredRelationships.length} relationships for time range ${new Date(startTime).toISOString()} - ${new Date(endTime).toISOString()}`);
+  }, [allNodes, allRelationships, startTime, endTime]);
 
   // Generate coordinates based on selected region using land-based coordinates
   const generateRegionalCoords = (region: Region) => {
     // Get the array of coordinates for the selected region
     const regionCoords = landCoordinates[region] || landCoordinates.global;
-    
+
     // Select a random base coordinate from the region
     const baseCoord = regionCoords[Math.floor(Math.random() * regionCoords.length)];
-    
+
     // Add a small random offset to avoid all nodes being in exactly the same place
     // The offset is smaller than before to keep nodes close to actual cities
     return {
@@ -211,32 +361,32 @@ const GeoMap: React.FC = () => {
     const sampleRelationships: GraphRelationship[] = [];
     const nodeTypes = ['server', 'client', 'workstation', 'router', 'database'];
     const relationshipTypes = ['ConnectsTo', 'AccessedBy', 'Contains', 'Manages', 'ReportsTo'];
-    
+
     for (let i = 0; i < 10; i++) {
       const coords = generateRegionalCoords(selectedRegion);
       const randomType = nodeTypes[Math.floor(Math.random() * nodeTypes.length)];
-      
+
       sampleNodes.push({
         id: `sample-${i}`,
         label: `Sample ${randomType} ${i+1}`,
         type: randomType,
-        icon: getIconPath(randomType),
+        icon: getIconPath(randomType), // PNG format for Leaflet compatibility
         ...coords
       });
     }
-    
+
     // Create some relationships between nodes
     for (let i = 0; i < 15; i++) {
       const sourceIndex = Math.floor(Math.random() * sampleNodes.length);
       let targetIndex = Math.floor(Math.random() * sampleNodes.length);
-      
+
       // Ensure source and target are different
       while (targetIndex === sourceIndex) {
         targetIndex = Math.floor(Math.random() * sampleNodes.length);
       }
-      
+
       const relType = relationshipTypes[Math.floor(Math.random() * relationshipTypes.length)];
-      
+
       sampleRelationships.push({
         id: `rel-${i}`,
         source: sampleNodes[sourceIndex].id,
@@ -245,191 +395,166 @@ const GeoMap: React.FC = () => {
         label: relType
       });
     }
-    
+
     console.log(`Generated ${sampleNodes.length} sample nodes in the ${selectedRegion} region`);
     console.log(`Generated ${sampleRelationships.length} sample relationships`);
-    setNodes(sampleNodes);
-    setRelationships(sampleRelationships);
+
+    // Store in both all and filtered state
+    setAllNodes(sampleNodes);
+    setAllRelationships(sampleRelationships);
+    setFilteredNodes(sampleNodes);
+    setFilteredRelationships(sampleRelationships);
     onClose();
   };
 
   // Process nodes and apply coordinates based on selected region
   const processNodesWithRegion = () => {
-    if (nodesWithoutCoords.length === 0) {
+    if (allNodes.length === 0) {
       // If there are no nodes without coordinates but also no nodes with coordinates,
       // generate sample nodes
-      if (nodes.length === 0) {
-        generateSampleNodes();
-        return;
-      }
+      generateSampleNodes();
       return;
     }
 
-    const processedNodes = [...nodes];
-    
-    nodesWithoutCoords.forEach(n => {
-      const coords = generateRegionalCoords(selectedRegion);
-      const nodeType = n.data?.type || 'unknown';
-      const icon = getIconPath(nodeType);
-      
-      processedNodes.push({ 
-        id: String(n.data?.id), 
-        label: n.data?.label || `Node ${n.data?.id}`,
-        type: nodeType,
-        icon, 
-        ...coords 
-      });
+    const processedNodes = [...allNodes];
+
+    // Add coordinates to nodes without them
+    processedNodes.forEach(node => {
+      if (!node.latitude || !node.longitude) {
+        const coords = generateRegionalCoords(selectedRegion);
+        node.latitude = coords.latitude;
+        node.longitude = coords.longitude;
+      }
     });
-    
-    console.log(`Processed ${nodesWithoutCoords.length} nodes with missing coordinates using ${selectedRegion} region`);
-    setNodes(processedNodes);
-    setNodesWithoutCoords([]);
+
+    console.log(`Processed ${processedNodes.length} nodes with missing coordinates using ${selectedRegion} region`);
+    setAllNodes(processedNodes);
+    setFilteredNodes(processedNodes);
     onClose();
   };
 
-  // Handle image loading errors
+  // Fetch data from API
   useEffect(() => {
-    // Check if any icon files are missing
-    const checkIconAvailability = async () => {
-      try {
-        // Try to fetch the unknown.png icon as a test
-        const response = await fetch('/icons/unknown.png');
-        if (!response.ok) {
-          console.warn('Icon files may be missing, using fallback icons');
-          setUseIconFallbacks(true);
-        }
-      } catch (error) {
-        console.warn('Error checking icon availability:', error);
-        setUseIconFallbacks(true);
-      }
-    };
-
-    checkIconAvailability();
-  }, []);
-
-  useEffect(() => {
-    const fetchGeoData = async () => {
-      setLoading(true);
+    const fetchData = async () => {
+      setIsLoading(true);
       try {
         console.log('Fetching geo data from /api/geo-data');
         const response = await fetch('/api/geo-data');
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error('API error response:', errorText);
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log('Received geo data:', data);
-        setHasAttemptedFetch(true);
-        
+
         // Process the nodes to ensure they have coordinates
         const rawNodes = data.nodes || [];
-        
+
         if (rawNodes.length === 0) {
           console.log('No nodes with geographic data found');
-          setNodes([]);
-          setLoading(false);
+          setAllNodes([]);
+          setFilteredNodes([]);
+          setIsLoading(false);
           // Open the dialog to generate sample nodes
           onOpen();
           return;
         }
-        
+
         const nodesWithCoords: GraphNode[] = [];
-        const nodesWithoutCoords: any[] = [];
-        
+
         rawNodes.forEach((n: any) => {
           // Try to extract latitude and longitude from various property names
           const lat = parseFloat(n.data?.latitude ?? n.data?.lat);
           const lon = parseFloat(n.data?.longitude ?? n.data?.lon);
-          // Get icon based on node type
+          // Get icon based on node type with enhanced mapping
           const nodeType = n.data?.type || 'unknown';
-          const icon = getIconPath(nodeType);
-          
+          const icon = getIconPath(nodeType); // PNG format for Leaflet compatibility
+          // Extract timestamp if available
+          const timestamp = n.data?.timestamp;
+
           // If coordinates are missing or invalid, add to nodesWithoutCoords
           if (isNaN(lat) || isNaN(lon)) {
             console.log(`Node ${n.data?.id} missing coordinates, will prompt for region selection`);
-            nodesWithoutCoords.push(n);
           } else {
             // Add nodes with valid coordinates directly
-            nodesWithCoords.push({ 
-              id: String(n.data?.id), 
+            nodesWithCoords.push({
+              id: String(n.data?.id),
               label: n.data?.label || `Node ${n.data?.id}`,
               type: nodeType,
-              latitude: lat, 
-              longitude: lon, 
-              icon 
+              latitude: lat,
+              longitude: lon,
+              icon,
+              timestamp
             });
           }
         });
-        
+
         console.log(`Found ${nodesWithCoords.length} nodes with geographic data`);
-        console.log(`Found ${nodesWithoutCoords.length} nodes without geographic data`);
-        
-        setNodes(nodesWithCoords);
-        setNodesWithoutCoords(nodesWithoutCoords);
-        
+
+        // Store in both all and filtered state initially
+        setAllNodes(nodesWithCoords);
+        setFilteredNodes(nodesWithCoords);
+
         // Process relationships if they exist in the data
         if (data.edges && Array.isArray(data.edges)) {
           const relationships: GraphRelationship[] = data.edges.map((edge: any) => ({
-            id: String(edge.data?.id || `edge-${Math.random().toString(36).substr(2, 9)}`),
+            id: String(edge.data?.id || `edge-${Math.random().toString(36).substring(2, 11)}`),
             source: String(edge.data?.source),
             target: String(edge.data?.target),
             type: edge.data?.type || 'default',
-            label: edge.data?.label
+            label: edge.data?.label,
+            timestamp: edge.data?.timestamp
           }));
-          
+
           console.log(`Found ${relationships.length} relationships`);
-          setRelationships(relationships);
+          // Store in both all and filtered state initially
+          setAllRelationships(relationships);
+          setFilteredRelationships(relationships);
         } else {
           console.log('No relationship data found');
-          setRelationships([]);
+          setAllRelationships([]);
+          setFilteredRelationships([]);
         }
-        
-        // If there are nodes without coordinates, open the dialog
-        if (nodesWithoutCoords.length > 0) {
-          onOpen();
-        }
+
+        setIsLoading(false);
       } catch (e: any) {
         console.error("Failed to fetch geo data:", e);
         setError(e.message || "An unknown error occurred");
-        setHasAttemptedFetch(true);
-      } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
 
-    fetchGeoData();
-  }, [onOpen]);
+    fetchData();
+  }, [onOpen]); // Only fetch once on mount, then use local filtering
 
   // Find a node by ID
   const findNodeById = (id: string): GraphNode | undefined => {
-    return nodes.find(node => node.id === id);
+    return filteredNodes.find(node => node.id === id);
   };
 
   // Create polylines for relationships
   const renderRelationships = () => {
-    if (!showRelationships) return null;
-    
-    return relationships.map(rel => {
+    return filteredRelationships.map(rel => {
       const sourceNode = findNodeById(rel.source);
       const targetNode = findNodeById(rel.target);
-      
+
       if (!sourceNode || !targetNode) return null;
-      
-      const positions = [
+
+      const positions: [number, number][] = [
         [sourceNode.latitude, sourceNode.longitude],
         [targetNode.latitude, targetNode.longitude]
       ];
-      
+
       const color = getRelationshipColor(rel.type);
-      
+
       return (
-        <Polyline 
+        <Polyline
           key={rel.id}
           positions={positions}
-          pathOptions={{ 
+          pathOptions={{
             color: color,
             weight: 2,
             opacity: 0.7,
@@ -449,9 +574,9 @@ const GeoMap: React.FC = () => {
   };
 
   // If loading, show spinner
-  if (loading) {
+  if (isLoading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="500px">
+      <Box display="flex" justifyContent="center" alignItems="center" height="100%">
         <Spinner size="xl" />
       </Box>
     );
@@ -460,7 +585,7 @@ const GeoMap: React.FC = () => {
   // If error, show error message
   if (error) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="500px">
+      <Box display="flex" justifyContent="center" alignItems="center" height="100%">
         <Alert status="error" variant="solid" borderRadius="md">
           <AlertIcon />
           Error loading map data: {error}
@@ -470,9 +595,9 @@ const GeoMap: React.FC = () => {
   }
 
   // If no nodes and no nodes without coordinates, show empty state with option to generate
-  if (!nodes.length && hasAttemptedFetch) {
+  if (!filteredNodes.length && allNodes.length === 0) {
     return (
-      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="500px">
+      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" height="100%">
         <Alert status="info" variant="solid" borderRadius="md" mb={4}>
           <AlertIcon />
           No geographic data available. Try uploading a dataset with latitude/longitude coordinates.
@@ -480,7 +605,7 @@ const GeoMap: React.FC = () => {
         <Button colorScheme="blue" onClick={onOpen} mt={4}>
           Generate Sample Nodes
         </Button>
-        
+
         {/* Region Selection Modal */}
         <Modal isOpen={isOpen} onClose={onClose} isCentered>
           <ModalOverlay />
@@ -514,55 +639,120 @@ const GeoMap: React.FC = () => {
   }
 
   return (
-    <Box position="relative" height="500px" borderRadius="md" overflow="hidden">
+    <Box position="relative" height="100%" borderRadius="md" overflow="hidden">
       {/* Map Controls */}
-      <Box 
-        position="absolute" 
-        top="10px" 
-        right="10px" 
-        zIndex="1000" 
-        bg="white" 
-        p={2} 
-        borderRadius="md" 
+      <Box
+        position="absolute"
+        top="10px"
+        right="10px"
+        zIndex="1000"
+        bg="white"
+        p={2}
+        borderRadius="md"
         boxShadow="md"
       >
-        <Button 
-          size="sm" 
-          colorScheme={showRelationships ? "blue" : "gray"} 
-          onClick={() => setShowRelationships(!showRelationships)}
+        <Button
+          size="sm"
+          colorScheme="blue"
+          onClick={() => setMapKey(mapKey + 1)}
           mb={2}
           width="100%"
         >
-          {showRelationships ? "Hide Connections" : "Show Connections"}
+          Refresh Map
         </Button>
-        
-        {nodesWithoutCoords.length > 0 && (
-          <Button 
-            size="sm" 
-            colorScheme="orange" 
-            onClick={onOpen}
-            width="100%"
-          >
-            Place {nodesWithoutCoords.length} Nodes
-          </Button>
-        )}
       </Box>
-      
+
+      {/* The Map */}
+      <MapContainer
+        key={mapKey}
+        center={[20, 0]}
+        zoom={2}
+        style={{ height: "100%", width: "100%" }}
+        ref={mapRef}
+        maxBounds={[[-90, -180], [90, 180]]}
+        maxBoundsViscosity={1.0}
+      >
+        {/* Map Controller for resizing and centering */}
+        <MapController nodes={filteredNodes} isActive={isActive} />
+
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          noWrap={true}
+          maxZoom={19}
+          minZoom={1}
+          errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        />
+
+        {/* Render relationship lines */}
+        {renderRelationships()}
+
+        {/* Render nodes as markers */}
+        {filteredNodes.map(node => {
+          // Create icon for the node with enhanced error handling
+          let icon;
+          try {
+            // Try to create the icon with the node's icon path
+            icon = new Icon({
+              iconUrl: node.icon,
+              iconSize: [32, 32],
+              iconAnchor: [16, 16],
+              popupAnchor: [0, -16],
+              // Add error handling for missing images
+              className: 'leaflet-marker-icon-with-fallback'
+            });
+          } catch (e) {
+            console.warn(`Failed to create icon for node ${node.id} (type: ${node.type}), using fallback`, e);
+            icon = createFallbackIcon(node.type);
+          }
+
+          return (
+            <Marker
+              key={node.id}
+              position={[node.latitude, node.longitude]}
+              icon={icon}
+              // Add event handlers for icon loading errors
+              eventHandlers={{
+                add: (e) => {
+                  // Handle icon loading errors by replacing with fallback
+                  const marker = e.target;
+                  const iconElement = marker.getElement()?.querySelector('img');
+                  if (iconElement) {
+                    iconElement.onerror = () => {
+                      console.warn(`Icon failed to load for node ${node.id}, switching to fallback`);
+                      marker.setIcon(createFallbackIcon(node.type));
+                    };
+                  }
+                }
+              }}
+            >
+              <Popup>
+                <div>
+                  <strong>{node.label || node.id}</strong>
+                  {node.type && <p>Type: {node.type}</p>}
+                  <p>Lat: {node.latitude.toFixed(4)}, Lon: {node.longitude.toFixed(4)}</p>
+                  {node.timestamp && (
+                    <p>Time: {new Date(parseTimestamp(node.timestamp)).toLocaleString()}</p>
+                  )}
+                  <p style={{ fontSize: '0.8em', color: '#666' }}>
+                    Icon: {node.icon.split('/').pop()}
+                  </p>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+      </MapContainer>
+
       {/* Region Selection Modal */}
       <Modal isOpen={isOpen} onClose={onClose} isCentered>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>
-            {nodesWithoutCoords.length > 0 
-              ? `Place ${nodesWithoutCoords.length} Nodes Without Coordinates` 
-              : "Generate Sample Nodes"}
-          </ModalHeader>
+          <ModalHeader>Generate Sample Nodes</ModalHeader>
           <ModalBody>
             <Text mb={4}>
-              {nodesWithoutCoords.length > 0 
-                ? `${nodesWithoutCoords.length} nodes in your dataset are missing geographic coordinates.` 
-                : "No geographic data was found in your dataset."} 
-              Please select a region where you'd like to place these nodes:
+              No geographic data was found in your dataset.
+              Please select a region where you'd like to generate sample nodes:
             </Text>
             <RadioGroup onChange={(value) => setSelectedRegion(value as Region)} value={selectedRegion}>
               <Stack direction="column">
@@ -575,74 +765,13 @@ const GeoMap: React.FC = () => {
             </RadioGroup>
           </ModalBody>
           <ModalFooter>
-            <Button 
-              colorScheme="blue" 
-              mr={3} 
-              onClick={nodesWithoutCoords.length > 0 ? processNodesWithRegion : generateSampleNodes}
-            >
-              {nodesWithoutCoords.length > 0 ? "Place Nodes" : "Generate Nodes"}
+            <Button colorScheme="blue" mr={3} onClick={generateSampleNodes}>
+              Generate Nodes
             </Button>
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
-      
-      {/* The Map */}
-      <MapContainer 
-        center={[20, 0]} 
-        zoom={2} 
-        style={{ height: "100%", width: "100%" }}
-        maxBounds={[[-90, -180], [90, 180]]}
-        maxBoundsViscosity={1.0}
-        worldCopyJump={false}
-        ref={mapRef}
-      >
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          noWrap={true}
-        />
-        
-        {/* Render relationship lines */}
-        {renderRelationships()}
-        
-        {/* Render nodes as markers */}
-        {nodes.map(node => {
-          // Create icon for the node
-          let icon;
-          if (useIconFallbacks) {
-            icon = createFallbackIcon(node.type);
-          } else {
-            try {
-              icon = new Icon({
-                iconUrl: node.icon,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16],
-                popupAnchor: [0, -16]
-              });
-            } catch (e) {
-              console.warn(`Failed to create icon for node ${node.id}, using fallback`, e);
-              icon = createFallbackIcon(node.type);
-            }
-          }
-          
-          return (
-            <Marker 
-              key={node.id} 
-              position={[node.latitude, node.longitude]} 
-              icon={icon}
-            >
-              <Popup>
-                <div>
-                  <strong>{node.label || node.id}</strong>
-                  <div>Type: {node.type || 'Unknown'}</div>
-                  <div>Location: {node.latitude.toFixed(4)}, {node.longitude.toFixed(4)}</div>
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
-      </MapContainer>
     </Box>
   );
 };

@@ -62,7 +62,7 @@ const UnifiedControlPanel: React.FC<UnifiedControlPanelProps> = ({
   onToggleLiveMode,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const { startTime, endTime, handleDataRangeChange } = useTimeline();
+  const { startTime, endTime, isInitialized, handleDataRangeChange, handleTimeRangeChange, minTimestamp, maxTimestamp, isPlaying } = useTimeline();
 
   // Section collapse states
   const { isOpen: isExecutiveSummaryOpen, onToggle: toggleExecutiveSummary } = useDisclosure({ defaultIsOpen: true });
@@ -78,8 +78,14 @@ const UnifiedControlPanel: React.FC<UnifiedControlPanelProps> = ({
   const textColor = useColorModeValue('gray.800', 'white');
   const mutedColor = useColorModeValue('gray.600', 'gray.400');
 
+  // Callback for when dataset changes (data bounds)
   const handleEnhancedDataRangeChange = (min: number, max: number) => {
     handleDataRangeChange(min, max);
+  };
+
+  // Callback for when user changes time selection
+  const handleEnhancedTimeRangeChange = (start: number, end: number) => {
+    handleTimeRangeChange(start, end);
   };
 
   return (
@@ -309,11 +315,17 @@ const UnifiedControlPanel: React.FC<UnifiedControlPanelProps> = ({
             </CardHeader>
             <Collapse in={isTimelineOpen} animateOpacity>
               <CardBody pt={0}>
-                <TimeSlider
-                  minTimestamp={startTime}
-                  maxTimestamp={endTime}
-                  onTimeRangeChange={handleEnhancedDataRangeChange}
-                />
+                {isInitialized ? (
+                  <TimeSlider
+                    minTimestamp={minTimestamp}
+                    maxTimestamp={maxTimestamp}
+                    onTimeRangeChange={handleEnhancedTimeRangeChange}
+                  />
+                ) : (
+                  <Text fontSize="sm" color="gray.500" textAlign="center" py={4}>
+                    Loading timeline data...
+                  </Text>
+                )}
               </CardBody>
             </Collapse>
           </Card>
