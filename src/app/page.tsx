@@ -75,7 +75,7 @@ export default function Home() {
   const [dataStats, setDataStats] = useState({ nodes: 0, edges: 0, lastUpdate: null as string | null });
   const [isLiveMode, setIsLiveMode] = useState(true);
   const [currentTime, setCurrentTime] = useState<string>('');
-  const [useSigmaGraph, setUseSigmaGraph] = useState(false); // Toggle between Cytoscape.js and Sigma.js
+  const [useSigmaGraph, setUseSigmaGraph] = useState(true); // Toggle between Cytoscape.js and Sigma.js - Default to Sigma.js
   const { isOpen: showStats, onToggle: toggleStats } = useDisclosure();
 
   // Modern theme-aware colors with glassmorphism

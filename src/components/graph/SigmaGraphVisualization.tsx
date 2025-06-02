@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Box,
   VStack,
@@ -24,7 +24,61 @@ import {
   FaCog,
 } from 'react-icons/fa';
 import { SigmaContainer, useLoadGraph, useSigma, useRegisterEvents } from '@react-sigma/core';
+import "@react-sigma/core/lib/style.css";
 import Graph from 'graphology';
+
+// Try importing from the main sigma package - the rendering subpackage might not export correctly
+// We'll register the programs manually inside the component
+
+// Error Boundary for Sigma.js
+class SigmaErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError?: (error: Error) => void },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; onError?: (error: Error) => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Sigma.js Error Boundary caught an error:', error, errorInfo);
+    if (this.props.onError) {
+      this.props.onError(error);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box
+          display="flex"
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+          height="100%"
+          p={4}
+        >
+          <Alert status="error" variant="solid" borderRadius="md" mb={4}>
+            <AlertIcon />
+            Sigma.js initialization failed
+          </Alert>
+          <Text fontSize="sm" color="gray.600" textAlign="center" maxWidth="400px">
+            {this.state.error?.message?.includes('Container has no height')
+              ? 'The graph container could not be properly initialized. This may be due to a layout issue.'
+              : 'An error occurred while initializing the graph visualization. Please try refreshing the page.'
+            }
+          </Text>
+        </Box>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // Types
 interface GraphElement {
@@ -62,7 +116,7 @@ const LAYOUT_OPTIONS = [
   { value: 'noverlap', label: 'No Overlap' },
 ];
 
-// Node color mapping
+// Node color mapping - FIXED: Use colors instead of unsupported types
 const getNodeColor = (type: string): string => {
   const colorMap: Record<string, string> = {
     'Server': '#3498db',
@@ -79,6 +133,38 @@ const getNodeColor = (type: string): string => {
   return colorMap[type] || colorMap.default;
 };
 
+// Node size mapping based on type
+const getNodeSize = (type: string): number => {
+  const sizeMap: Record<string, number> = {
+    'Server': 18,
+    'Workstation': 15,
+    'User': 12,
+    'ThreatActor': 20,
+    'Character': 14,
+    'Database': 16,
+    'Router': 17,
+    'Client': 13,
+    'Firewall': 19,
+    'default': 15,
+  };
+  return sizeMap[type] || sizeMap.default;
+};
+
+// Sigma Instance Tracker Component
+const SigmaInstanceTracker = React.forwardRef<any, {}>((props, ref) => {
+  const sigma = useSigma();
+  
+  React.useEffect(() => {
+    if (ref && typeof ref === 'object' && ref.current !== undefined) {
+      ref.current = sigma;
+      console.log('Sigma.js: Instance tracked for cleanup');
+    }
+  }, [sigma, ref]);
+
+  return null;
+});
+SigmaInstanceTracker.displayName = 'SigmaInstanceTracker';
+
 // Graph Controller Component
 const GraphController: React.FC<{
   elements: GraphElement[];
@@ -89,9 +175,35 @@ const GraphController: React.FC<{
   onDataRangeChange: (min: number, max: number) => void;
 }> = ({ elements, startTime, endTime, selectedLayout, hasManualPositions, onDataRangeChange }) => {
   const loadGraph = useLoadGraph();
-  const [graph] = useState(() => new Graph());
+  const sigma = useSigma();
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const renderCountRef = useRef(0);
+  const graphRef = useRef<Graph | null>(null);
+
+  // Create a stable graph instance
+  const graph = useMemo(() => {
+    if (!graphRef.current) {
+      graphRef.current = new Graph();
+    }
+    return graphRef.current;
+  }, []);
+
+  // Stable reference to data range callback to prevent infinite loops
+  const stableOnDataRangeChange = useCallback(onDataRangeChange, []);
+
+  // Reduce console logging for performance
+  const shouldLog = renderCountRef.current < 5;
+  if (shouldLog) {
+    console.log('GraphController: Rendered with props:', {
+      elementsCount: elements.length,
+      startTime,
+      endTime,
+      selectedLayout,
+      hasManualPositions,
+      renderCount: ++renderCountRef.current
+    });
+  }
 
   // Apply layout to nodes - with strict manual positioning preservation
   const applyLayout = useCallback((graph: Graph, layoutType: string, preserveManualPositions: boolean = false) => {
@@ -102,7 +214,7 @@ const GraphController: React.FC<{
 
     // If preserving manual positions, don't apply any layout at all
     if (preserveManualPositions) {
-      console.log(`Skipping layout application - preserving manual positions`);
+      if (shouldLog) console.log(`Skipping layout application - preserving manual positions`);
       return;
     }
 
@@ -145,101 +257,179 @@ const GraphController: React.FC<{
         });
     }
 
-    console.log(`Applied ${layoutType} layout to ${nodeCount} nodes`);
-  }, []);
+    if (shouldLog) console.log(`Applied ${layoutType} layout to ${nodeCount} nodes`);
+  }, [shouldLog]);
 
-  // Filter and update graph based on time range - with conservative updates
+  // FIXED: Memoize filtered elements to prevent unnecessary re-renders
+  const filteredElements = useMemo(() => {
+    return elements.filter(el => {
+      if (!el.data.timestamp) return true; // Include elements without timestamps
+      const timestamp = typeof el.data.timestamp === 'number' 
+        ? el.data.timestamp 
+        : new Date(el.data.timestamp).getTime();
+      return timestamp >= startTime && timestamp <= endTime;
+    });
+  }, [elements, startTime, endTime]);
+
+  // Filter and update graph based on time range - FIXED: Stabilize dependencies
   useEffect(() => {
     // Skip updates if we're in manual positioning mode and this is just a time range change
     if (hasManualPositions && !isInitialLoad) {
-      console.log('Skipping graph update - manual positioning mode active');
+      if (shouldLog) console.log('Skipping graph update - manual positioning mode active');
       return;
     }
 
-    setIsLoading(true);
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
 
-    try {
-      // Filter elements by time range
-      const filteredElements = elements.filter(el => {
-        if (!el.data.timestamp) return true;
-        const elementTime = typeof el.data.timestamp === 'number'
-          ? el.data.timestamp
-          : new Date(el.data.timestamp).getTime();
-        return elementTime >= startTime && elementTime <= endTime;
-      });
+    const updateGraph = async () => {
+      if (!isMounted) return;
 
-      // Clear existing graph
-      graph.clear();
+      setIsLoading(true);
 
-      // Add nodes
-      const nodes = filteredElements.filter(el => el.group === 'nodes');
-      const edges = filteredElements.filter(el => el.group === 'edges');
-
-      nodes.forEach(el => {
-        if (!graph.hasNode(el.data.id)) {
-          graph.addNode(el.data.id, {
-            label: el.data.label || el.data.id,
-            size: 15,
-            color: getNodeColor(el.data.type || 'default'),
-            type: el.data.type || 'default',
-            x: (Math.random() - 0.5) * 400,
-            y: (Math.random() - 0.5) * 400,
-            ...el.data,
+      try {
+        if (shouldLog) {
+          console.log('GraphController: Processing elements:', {
+            totalElements: elements.length,
+            filteredElements: filteredElements.length,
+            timeRange: {
+              startTime,
+              endTime,
+              startTimeDate: new Date(startTime).toISOString(),
+              endTimeDate: new Date(endTime).toISOString()
+            }
           });
+
+          // Debug: Show sample element timestamps
+          if (elements.length > 0) {
+            const sampleElements = elements.slice(0, 3);
+            console.log('GraphController: Sample element timestamps:', sampleElements.map(el => ({
+              id: el.data.id,
+              timestamp: el.data.timestamp,
+              timestampDate: el.data.timestamp ? new Date(el.data.timestamp).toISOString() : 'No timestamp'
+            })));
+          }
         }
-      });
 
-      // Add edges
-      edges.forEach(el => {
-        if (el.data.source && el.data.target &&
-            graph.hasNode(el.data.source) && graph.hasNode(el.data.target) &&
-            !graph.hasEdge(el.data.source, el.data.target)) {
-          graph.addEdge(el.data.source, el.data.target, {
-            label: el.data.label || '',
-            color: '#ccc',
-            size: 2,
-            ...el.data,
-          });
-        }
-      });
+        // Clear existing graph
+        graph.clear();
 
-      // Only apply layout on initial load or explicit layout changes
-      if (isInitialLoad) {
-        applyLayout(graph, selectedLayout, false);
-        setIsInitialLoad(false);
-        console.log(`Sigma.js: Initial load - applied ${selectedLayout} layout`);
-      }
+        // Add nodes
+        const nodes = filteredElements.filter(el => el.group === 'nodes');
+        const edges = filteredElements.filter(el => el.group === 'edges');
 
-      // Calculate data range for timeline (only once)
-      if (isInitialLoad && elements.length > 0) {
-        let minTimestamp = Infinity;
-        let maxTimestamp = -Infinity;
-
-        elements.forEach(el => {
-          if (el.data.timestamp) {
-            const ts = typeof el.data.timestamp === 'number'
-              ? el.data.timestamp
-              : new Date(el.data.timestamp).getTime();
-            if (ts < minTimestamp) minTimestamp = ts;
-            if (ts > maxTimestamp) maxTimestamp = ts;
+        nodes.forEach(el => {
+          if (!graph.hasNode(el.data.id)) {
+            // FIXED: Remove the type property completely and use default circle nodes
+            const { type, ...nodeDataWithoutType } = el.data;
+            
+            graph.addNode(el.data.id, {
+              label: el.data.label || el.data.id,
+              size: getNodeSize(type || 'default'),
+              color: getNodeColor(type || 'default'),
+              x: (Math.random() - 0.5) * 400,
+              y: (Math.random() - 0.5) * 400,
+              // Store original type in a custom attribute but don't use as node type
+              originalType: type || 'default',
+              // FIXED: Don't specify node type - let Sigma use its default renderer
+              ...nodeDataWithoutType, // Spread all other data except 'type'
+            });
           }
         });
 
-        if (isFinite(minTimestamp) && isFinite(maxTimestamp)) {
-          onDataRangeChange(minTimestamp, maxTimestamp);
+        // Add edges
+        edges.forEach(el => {
+          if (el.data.source && el.data.target &&
+              graph.hasNode(el.data.source) && graph.hasNode(el.data.target) &&
+              !graph.hasEdge(el.data.source, el.data.target)) {
+            graph.addEdge(el.data.source, el.data.target, {
+              label: el.data.label || '',
+              color: '#ccc',
+              size: 2,
+              // FIXED: Don't specify edge type - let Sigma use its default renderer
+              ...el.data,
+            });
+          }
+        });
+
+        // Only apply layout on initial load or explicit layout changes
+        if (isInitialLoad) {
+          applyLayout(graph, selectedLayout, false);
+          setIsInitialLoad(false);
+          if (shouldLog) console.log(`Sigma.js: Initial load - applied ${selectedLayout} layout`);
+        }
+
+        // Calculate data range for timeline (only once)
+        if (isInitialLoad && elements.length > 0) {
+          let minTimestamp = Infinity;
+          let maxTimestamp = -Infinity;
+
+          elements.forEach(el => {
+            if (el.data.timestamp) {
+              const ts = typeof el.data.timestamp === 'number'
+                ? el.data.timestamp
+                : new Date(el.data.timestamp).getTime();
+              if (ts < minTimestamp) minTimestamp = ts;
+              if (ts > maxTimestamp) maxTimestamp = ts;
+            }
+          });
+
+          if (isFinite(minTimestamp) && isFinite(maxTimestamp)) {
+            stableOnDataRangeChange(minTimestamp, maxTimestamp);
+          }
+        }
+
+        // Load the graph
+        loadGraph(graph);
+
+        if (shouldLog) {
+          console.log(`Sigma.js: Loaded ${nodes.length} nodes and ${edges.length} edges`);
+          console.log('Sigma.js: Graph state after loading:', {
+            nodeCount: graph.order,
+            edgeCount: graph.size,
+            hasNodes: graph.order > 0,
+            hasEdges: graph.size > 0,
+            nodeIds: graph.nodes().slice(0, 5) // Show first 5 node IDs
+          });
+          
+          // Additional debugging: Log sample node data
+          if (graph.order > 0) {
+            const firstNode = graph.nodes()[0];
+            const nodeData = graph.getNodeAttributes(firstNode);
+            console.log('Sigma.js: Sample node data:', { id: firstNode, attributes: nodeData });
+          }
+        }
+
+        // FIXED: Reduced timeout and added error handling
+        timeoutId = setTimeout(() => {
+          if (isMounted && sigma) {
+            try {
+              sigma.refresh();
+              sigma.getCamera().setState({ x: 0, y: 0, ratio: 1 });
+            } catch (error) {
+              console.warn('Error forcing Sigma refresh:', error);
+            }
+          }
+        }, 50);
+
+      } catch (error) {
+        console.error('Error updating Sigma.js graph:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
         }
       }
+    };
 
-      // Load the graph
-      loadGraph(graph);
+    updateGraph();
 
-      console.log(`Sigma.js: Loaded ${nodes.length} nodes and ${edges.length} edges`);
-    } catch (error) {
-      console.error('Error updating Sigma.js graph:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [elements, selectedLayout, graph, loadGraph, applyLayout, onDataRangeChange, isInitialLoad]);
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [filteredElements, selectedLayout, hasManualPositions, isInitialLoad, graph, loadGraph, applyLayout, stableOnDataRangeChange, sigma, elements.length, shouldLog]); // FIXED: Use memoized filteredElements
 
   return null;
 };
@@ -267,10 +457,8 @@ const ManualPositioning: React.FC<{
         // Disable camera during drag
         sigma.getCamera().disable();
 
-        // Prevent default behavior
+        // FIXED: Remove event.original references as they don't exist on SigmaNodeEventPayload
         event.preventSigmaDefault();
-        event.original.preventDefault();
-        event.original.stopPropagation();
       },
 
       // Mouse move during drag
@@ -285,8 +473,6 @@ const ManualPositioning: React.FC<{
 
           // Prevent default behavior
           event.preventSigmaDefault();
-          event.original.preventDefault();
-          event.original.stopPropagation();
         }
       },
 
@@ -332,7 +518,7 @@ const ManualPositioning: React.FC<{
               x: nodeDisplayData.x + 20,
               y: nodeDisplayData.y - 10,
               title: nodeData.label || event.node,
-              content: `Type: ${nodeData.type || 'N/A'} | ID: ${event.node}`,
+              content: `Type: ${nodeData.originalType || 'N/A'} | ID: ${event.node}`,
             });
           }
         }
@@ -370,6 +556,7 @@ const SigmaGraphVisualization: React.FC<SigmaGraphVisualizationProps> = ({
   const [groupingEnabled, setGroupingEnabled] = useState(false);
   const [animationEnabled, setAnimationEnabled] = useState(true);
   const [hasManualPositions, setHasManualPositions] = useState(false);
+  const [containerReady, setContainerReady] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
     x: 0,
@@ -377,8 +564,110 @@ const SigmaGraphVisualization: React.FC<SigmaGraphVisualizationProps> = ({
     content: '',
     title: '',
   });
+  const sigmaInstanceRef = useRef<any>(null);
 
   const toast = useToast();
+
+  // FIXED: Add cleanup effect for Sigma instance
+  useEffect(() => {
+    return () => {
+      // Cleanup on component unmount to prevent WebGL context leaks
+      if (sigmaInstanceRef.current) {
+        try {
+          // FIXED: Better cleanup sequence
+          const instance = sigmaInstanceRef.current;
+          if (instance.kill) {
+            instance.kill();
+          } else if (instance.clear) {
+            instance.clear();
+          }
+          console.log('Sigma.js: Instance cleaned up on unmount');
+        } catch (error) {
+          console.warn('Error cleaning up Sigma instance:', error);
+        }
+        sigmaInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  // FIXED: Improved container readiness with better cleanup
+  const handleContainerRef = useCallback((node: HTMLDivElement | null) => {
+    if (node && !containerReady) {
+      console.log('Sigma.js: Container mounted, checking readiness...');
+      
+      // Use requestAnimationFrame to ensure DOM is fully rendered
+      requestAnimationFrame(() => {
+        const rect = node.getBoundingClientRect();
+        const isReady = rect.height > 0 && rect.width > 0;
+        
+        console.log('Sigma.js: Container readiness check:', {
+          rect: { width: rect.width, height: rect.height },
+          isReady
+        });
+        
+        if (isReady) {
+          console.log('Sigma.js: Container is ready with dimensions:', { width: rect.width, height: rect.height });
+          setContainerReady(true);
+        } else {
+          // Fallback: force ready after a short delay
+          setTimeout(() => {
+            console.log('Sigma.js: Forcing container ready after fallback delay');
+            setContainerReady(true);
+          }, 300);
+        }
+      });
+    }
+    
+    // FIXED: Add cleanup when node is removed
+    return () => {
+      if (sigmaInstanceRef.current) {
+        try {
+          const instance = sigmaInstanceRef.current;
+          if (instance.kill) {
+            instance.kill();
+          }
+        } catch (error) {
+          console.warn('Error cleaning up Sigma on container unmount:', error);
+        }
+        sigmaInstanceRef.current = null;
+      }
+    };
+  }, [containerReady]);
+
+  // FIXED: Better effect management for container readiness
+  useEffect(() => {
+    if (!loading && elements.length > 0 && !containerReady) {
+      // Additional fallback: if we have data but container isn't ready after a delay, force it
+      const fallbackTimer = setTimeout(() => {
+        if (!containerReady) {
+          console.log('Sigma.js: Fallback timeout - forcing container ready');
+          setContainerReady(true);
+        }
+      }, 1000);
+
+      return () => clearTimeout(fallbackTimer);
+    }
+  }, [loading, elements.length, containerReady]);
+
+  // FIXED: Add layout change dependency management
+  useEffect(() => {
+    // Reset container when layout changes to ensure proper re-rendering
+    if (selectedLayout && containerReady) {
+      console.log('Sigma.js: Layout changed, ensuring proper render...');
+      // Small delay to allow layout application to complete
+      const layoutTimer = setTimeout(() => {
+        if (sigmaInstanceRef.current && sigmaInstanceRef.current.refresh) {
+          try {
+            sigmaInstanceRef.current.refresh();
+          } catch (error) {
+            console.warn('Error refreshing after layout change:', error);
+          }
+        }
+      }, 200);
+      
+      return () => clearTimeout(layoutTimer);
+    }
+  }, [selectedLayout, containerReady]);
 
   // Fetch data from API
   useEffect(() => {
@@ -484,7 +773,37 @@ const SigmaGraphVisualization: React.FC<SigmaGraphVisualizationProps> = ({
   }
 
   return (
-    <Box border="1px solid #eee" borderRadius="md" overflow="hidden" height="600px" width="100%" position="relative">
+    <Box
+      ref={handleContainerRef}
+      border="1px solid #eee"
+      borderRadius="md"
+      overflow="hidden"
+      height="600px"
+      width="100%"
+      position="relative"
+      minHeight="600px"
+    >
+      {/* Loading state while container is not ready */}
+      {!containerReady && (
+        <Box
+          position="absolute"
+          top="0"
+          left="0"
+          right="0"
+          bottom="0"
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          bg="white"
+          zIndex="999"
+        >
+          <VStack spacing={3}>
+            <Spinner size="lg" color="blue.500" />
+            <Text fontSize="sm" color="gray.600">Initializing graph container...</Text>
+          </VStack>
+        </Box>
+      )}
+
       {/* Controls */}
       <Box
         position="absolute"
@@ -594,32 +913,46 @@ const SigmaGraphVisualization: React.FC<SigmaGraphVisualizationProps> = ({
         </VStack>
       </Box>
 
-      {/* Sigma Container */}
-      <SigmaContainer
-        style={{ height: '100%', width: '100%' }}
-        settings={{
-          defaultNodeColor: '#666',
-          defaultEdgeColor: '#ccc',
-          nodeReducer: (node, data) => ({ ...data }),
-          edgeReducer: (edge, data) => ({ ...data }),
-          enableEdgeClickEvents: true,
-          enableEdgeWheelEvents: true,
-          renderEdgeLabels: true,
-        }}
-      >
-        <GraphController
-          elements={elements}
-          startTime={startTime}
-          endTime={endTime}
-          selectedLayout={selectedLayout}
-          hasManualPositions={hasManualPositions}
-          onDataRangeChange={onDataRangeChange}
-        />
-        <ManualPositioning
-          setTooltip={setTooltip}
-          onManualPositioning={setHasManualPositions}
-        />
-      </SigmaContainer>
+      {/* FIXED: Simplified Sigma Container - avoid program registration issues */}
+      {containerReady && (
+        <SigmaErrorBoundary onError={(error) => setError(error.message)}>
+          <SigmaContainer
+            style={{ height: '100%', width: '100%' }}
+            settings={{
+              // Basic settings that work reliably
+              defaultNodeColor: '#666',
+              defaultEdgeColor: '#ccc',
+              nodeReducer: (node, data) => ({ ...data }),
+              edgeReducer: (edge, data) => ({ ...data }),
+              enableEdgeEvents: true,
+              renderEdgeLabels: true,
+              allowInvalidContainer: true,
+              // Performance settings
+              hideEdgesOnMove: false,
+              hideLabelsOnMove: false,
+              renderLabels: true,
+              // Simple approach: let Sigma use default programs
+              zIndex: true,
+              minCameraRatio: 0.1,
+              maxCameraRatio: 10,
+            }}
+          >
+            <GraphController
+              elements={elements}
+              startTime={startTime}
+              endTime={endTime}
+              selectedLayout={selectedLayout}
+              hasManualPositions={hasManualPositions}
+              onDataRangeChange={onDataRangeChange}
+            />
+            <ManualPositioning
+              setTooltip={setTooltip}
+              onManualPositioning={setHasManualPositions}
+            />
+            <SigmaInstanceTracker ref={sigmaInstanceRef} />
+          </SigmaContainer>
+        </SigmaErrorBoundary>
+      )}
 
       {/* Tooltip */}
       {tooltip.visible && (
