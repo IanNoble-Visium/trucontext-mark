@@ -43,6 +43,13 @@ const GraphVisualization = dynamic(
     loading: () => <GraphVisualizationSkeleton />
   }
 );
+const SigmaGraphVisualization = dynamic(
+  () => import("@/components/graph/SigmaGraphVisualization"),
+  {
+    ssr: false,
+    loading: () => <GraphVisualizationSkeleton />
+  }
+);
 const GeoMap = dynamic(
   () => import("@/components/graph/GeoMap"),
   {
@@ -68,6 +75,7 @@ export default function Home() {
   const [dataStats, setDataStats] = useState({ nodes: 0, edges: 0, lastUpdate: null as string | null });
   const [isLiveMode, setIsLiveMode] = useState(true);
   const [currentTime, setCurrentTime] = useState<string>('');
+  const [useSigmaGraph, setUseSigmaGraph] = useState(false); // Toggle between Cytoscape.js and Sigma.js
   const { isOpen: showStats, onToggle: toggleStats } = useDisclosure();
 
   // Modern theme-aware colors with glassmorphism
@@ -204,6 +212,24 @@ export default function Home() {
                   <Icon as={FaShieldAlt} mr={2} boxSize={4} />
                   Live Monitoring
                 </Badge>
+
+                <Tooltip label={`Switch to ${useSigmaGraph ? 'Cytoscape.js' : 'Sigma.js'} Graph`} hasArrow>
+                  <Badge
+                    colorScheme={useSigmaGraph ? "green" : "blue"}
+                    variant="subtle"
+                    px={3}
+                    py={2}
+                    borderRadius="full"
+                    fontSize="xs"
+                    fontWeight="semibold"
+                    cursor="pointer"
+                    onClick={() => setUseSigmaGraph(!useSigmaGraph)}
+                    _hover={{ transform: 'scale(1.05)' }}
+                    transition="all 0.2s"
+                  >
+                    {useSigmaGraph ? 'Sigma.js' : 'Cytoscape.js'}
+                  </Badge>
+                </Tooltip>
 
                 <Tooltip label="Toggle Fullscreen" hasArrow>
                   <IconButton
@@ -346,11 +372,19 @@ export default function Home() {
                         bg="white"
                         boxShadow="inner"
                       >
-                        <GraphVisualization
-                          startTime={startTime}
-                          endTime={endTime}
-                          onDataRangeChange={handleEnhancedDataRangeChange}
-                        />
+                        {useSigmaGraph ? (
+                          <SigmaGraphVisualization
+                            startTime={startTime}
+                            endTime={endTime}
+                            onDataRangeChange={handleEnhancedDataRangeChange}
+                          />
+                        ) : (
+                          <GraphVisualization
+                            startTime={startTime}
+                            endTime={endTime}
+                            onDataRangeChange={handleEnhancedDataRangeChange}
+                          />
+                        )}
                       </Box>
                     </TabPanel>
                     <TabPanel p={0} h="100%">

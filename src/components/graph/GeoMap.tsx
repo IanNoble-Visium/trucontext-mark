@@ -120,18 +120,24 @@ const MapController: React.FC<{ nodes: GraphNode[]; isActive?: boolean }> = ({ n
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [map, isActive, hasInitialized, centerMapOnNodes]);
 
-  // Handle tab activation - refresh every time tab becomes active
+  // Handle tab activation - only refresh once when tab becomes active for the first time
   useEffect(() => {
-    if (isActive) {
-      console.log('MapController: Tab became active, forcing map update');
-      // When the Geographic View tab becomes active, always force a complete refresh
+    if (isActive && !hasInitialized) {
+      console.log('MapController: Tab became active for first time, initializing map');
+      // Only initialize when the Geographic View tab becomes active for the first time
       setTimeout(() => {
         map.invalidateSize();
         centerMapOnNodes();
         setHasInitialized(true);
       }, 100);
+    } else if (isActive && hasInitialized) {
+      console.log('MapController: Tab became active, refreshing map size only');
+      // Just refresh the map size, don't re-center
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 50);
     }
-  }, [isActive, map, centerMapOnNodes]);
+  }, [isActive, map, centerMapOnNodes, hasInitialized]);
 
   return null;
 };
@@ -394,6 +400,11 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
 
   // Filter nodes and relationships based on the time range
   useEffect(() => {
+    // Only filter if we have data and valid time range
+    if (allNodes.length === 0 || !startTime || !endTime || startTime >= endTime) {
+      return;
+    }
+
     // Filter nodes based on time range
     const timeFilteredNodes = allNodes.filter(node => {
       if (!node.timestamp) return true; // Include nodes without timestamp
@@ -515,24 +526,33 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
     onClose();
   };
 
-  // Auto-refresh when tab becomes active
+  // Auto-refresh when tab becomes active - but only if we haven't loaded data yet
   useEffect(() => {
-    if (isActive) {
-      console.log('GeoMap: Tab became active, triggering data refresh');
-      // Force a data refresh when the tab becomes active
+    if (isActive && allNodes.length === 0 && !isLoading && !error) {
+      console.log('GeoMap: Tab became active and no data loaded, triggering refresh');
+      // Only refresh if we don't have data yet
       const timer = setTimeout(() => {
-        // Trigger the data fetch by incrementing mapKey
         setMapKey(prev => prev + 1);
-      }, 50);
+      }, 100);
 
       return () => clearTimeout(timer);
     }
-  }, [isActive]);
+  }, [isActive, allNodes.length, isLoading, error]);
 
-  // Fetch data from API
+  // Fetch data from API - only once on mount
   useEffect(() => {
+    let isMounted = true;
+
     const fetchData = async () => {
+      // Prevent multiple simultaneous fetches
+      if (isLoading) {
+        console.log('GeoMap: Already loading, skipping fetch');
+        return;
+      }
+
       setIsLoading(true);
+      setError(null);
+
       try {
         // Use the same Neo4j dataset as the Graph Topology view
         console.log('GeoMap: fetching data from /api/graph-data');
@@ -546,6 +566,9 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
 
         const data = await response.json();
         console.log('GeoMap: received graph data:', data);
+
+        // Check if component is still mounted
+        if (!isMounted) return;
 
         const elements = Array.isArray(data.elements) ? data.elements : [];
         const nodesWithCoords: GraphNode[] = [];
@@ -577,10 +600,12 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
 
         if (nodesWithCoords.length === 0) {
           console.log('GeoMap: no nodes with geographic data found');
-          setAllNodes([]);
-          setFilteredNodes([]);
-          setIsLoading(false);
-          onOpen();
+          if (isMounted) {
+            setAllNodes([]);
+            setFilteredNodes([]);
+            setIsLoading(false);
+            onOpen();
+          }
           return;
         }
 
@@ -604,20 +629,31 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
 
         console.log(`GeoMap: found ${nodesWithCoords.length} nodes and ${relationships.length} relationships with coordinates`);
 
-        setAllNodes(nodesWithCoords);
-        setFilteredNodes(nodesWithCoords);
-        setAllRelationships(relationships);
-        setFilteredRelationships(relationships);
-        setIsLoading(false);
+        if (isMounted) {
+          setAllNodes(nodesWithCoords);
+          setFilteredNodes(nodesWithCoords);
+          setAllRelationships(relationships);
+          setFilteredRelationships(relationships);
+          setIsLoading(false);
+        }
       } catch (e: any) {
         console.error('GeoMap: failed to fetch graph data:', e);
-        setError(e.message || 'An unknown error occurred');
-        setIsLoading(false);
+        if (isMounted) {
+          setError(e.message || 'An unknown error occurred');
+          setIsLoading(false);
+        }
       }
     };
 
-    fetchData();
-  }, [onOpen]); // Only fetch once on mount, then use local filtering
+    // Only fetch if we don't have data yet and we're not already loading
+    if (allNodes.length === 0 && !error && !isLoading) {
+      fetchData();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Empty dependency array - only run once on mount
 
   // Find a node by ID
   const findNodeById = (id: string): GraphNode | undefined => {

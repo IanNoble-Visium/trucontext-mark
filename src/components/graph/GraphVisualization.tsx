@@ -153,6 +153,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const [userHasDraggedNodes, setUserHasDraggedNodes] = useState<boolean>(false);
   const manualPositioningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Zoom and pan state preservation
+  const zoomPanStateRef = useRef<{ zoom: number; pan: { x: number; y: number } } | null>(null);
+
   // Track user-initiated layout changes to prevent premature manual mode disabling
   const layoutChangeInProgressRef = useRef<boolean>(false);
 
@@ -267,11 +270,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
     const shouldAnimate = !isInitializing && animationEnabled && isPlaying && !manualPositioningMode;
 
     const baseConfig = {
-      fit: true,
+      fit: !manualPositioningMode, // Don't fit when in manual mode to preserve zoom/pan
       padding: 60, // Increased base padding for better centering
       animate: shouldAnimate,
       animationDuration: shouldAnimate ? 600 : 0,
-      center: true, // Ensure all layouts center properly
+      center: !manualPositioningMode, // Don't center when in manual mode to preserve pan position
     };
 
     switch (layoutName) {
@@ -699,6 +702,35 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       });
     } catch (error) {
       console.warn('Error applying stored positions:', error);
+    }
+  }, []);
+
+  // Store and restore zoom/pan state
+  const storeZoomPanState = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy || cy.destroyed()) return;
+
+    try {
+      const zoom = cy.zoom();
+      const pan = cy.pan();
+      zoomPanStateRef.current = { zoom, pan };
+      console.log('Stored zoom/pan state:', { zoom, pan });
+    } catch (error) {
+      console.warn('Error storing zoom/pan state:', error);
+    }
+  }, []);
+
+  const restoreZoomPanState = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy || cy.destroyed() || !zoomPanStateRef.current) return;
+
+    try {
+      const { zoom, pan } = zoomPanStateRef.current;
+      cy.zoom(zoom);
+      cy.pan(pan);
+      console.log('Restored zoom/pan state:', { zoom, pan });
+    } catch (error) {
+      console.warn('Error restoring zoom/pan state:', error);
     }
   }, []);
 
@@ -1601,6 +1633,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
   const resetAndRelayout = useCallback(() => {
     console.log('GraphVisualization: Resetting manual positioning and applying layout');
     nodePositionsRef.current = {};
+    zoomPanStateRef.current = null; // Clear zoom/pan state
     setUserHasDraggedNodes(false);
     disableManualPositioningMode('User Reset');
 
@@ -1818,8 +1851,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           // Stop any running layouts immediately
           cy.stop();
 
-          // Store current positions before starting drag
+          // Store current positions and zoom/pan state before starting drag
           storeNodePositions();
+          storeZoomPanState();
 
           // Enable manual positioning mode directly
           setManualPositioningMode(true);
@@ -1893,6 +1927,26 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       // Add the layoutstop handler
       cy.on('layoutstop', handleLayoutStop);
 
+      // Handle zoom changes to preserve zoom state
+      cy.on('zoom', () => {
+        try {
+          // Store zoom/pan state when user manually zooms
+          storeZoomPanState();
+        } catch (error) {
+          console.warn('Error storing zoom state:', error);
+        }
+      });
+
+      // Handle pan changes to preserve pan state
+      cy.on('pan', () => {
+        try {
+          // Store zoom/pan state when user manually pans
+          storeZoomPanState();
+        } catch (error) {
+          console.warn('Error storing pan state:', error);
+        }
+      });
+
       // Return cleanup function
       return () => {
         try {
@@ -1909,6 +1963,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
             cy.off('mouseout', 'node');
             cy.off('mouseover', 'edge');
             cy.off('mouseout', 'edge');
+            cy.off('zoom');
+            cy.off('pan');
           }
           window.removeEventListener('mouseup', handleGlobalMouseUp);
         } catch (error) {
@@ -1919,7 +1975,7 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
       console.error('Error setting up cytoscape events:', error);
       return () => {}; // Return empty cleanup function on error
     }
-  }, [toast, storeNodePositions, calculateTooltipPosition, expandGroup, collapseGroup, enableManualPositioningMode]);
+  }, [toast, storeNodePositions, storeZoomPanState, calculateTooltipPosition, expandGroup, collapseGroup, enableManualPositioningMode]);
 
   // REDESIGNED: Clean separation of concerns to eliminate auto-refreshing issues
 
@@ -1961,9 +2017,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
     const currentElementCount = cy.elements().length;
 
-    // Define very specific conditions for when layout should run
+    // Only run layout on initial load when no manual positioning has occurred
     const isInitialLoad = currentElementCount > 0 && !userHasDraggedNodes && Object.keys(nodePositionsRef.current).length === 0;
-    const shouldRunForTimeline = isPlaying && !manualPositioningMode && currentElementCount > 0;
 
     if (isInitialLoad) {
       console.log('Running initial layout');
@@ -1979,33 +2034,21 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
         }
       });
       layout.run();
-    } else if (shouldRunForTimeline) {
-      console.log('Running timeline layout');
-      layoutChangeInProgressRef.current = true;
-
-      const layoutConfig = getLayoutConfig(selectedLayout);
-      const layout = cy.layout({
-        ...layoutConfig,
-        animate: animationEnabled,
-        animationDuration: animationEnabled ? transitionSpeed : 0,
-        stop: () => {
-          layoutChangeInProgressRef.current = false;
-        }
-      });
-      layout.run();
     }
-  }, [isPlaying, manualPositioningMode, userHasDraggedNodes, selectedLayout, animationEnabled, transitionSpeed, getLayoutConfig, storeNodePositions, isInitializing]);
+    // REMOVED: Timeline-based automatic layout triggering to preserve manual positioning
+  }, [userHasDraggedNodes, selectedLayout, getLayoutConfig, storeNodePositions, isInitializing]);
 
-  // 3. Manual Position Restoration - Separate and Clean
+  // 3. Manual Position and Zoom/Pan Restoration - Separate and Clean
   useEffect(() => {
     if (manualPositioningMode && userHasDraggedNodes && Object.keys(nodePositionsRef.current).length > 0) {
-      console.log('Restoring manual positions');
+      console.log('Restoring manual positions and zoom/pan state');
       const timeoutId = setTimeout(() => {
         applyStoredPositions();
+        restoreZoomPanState();
       }, 50);
       return () => clearTimeout(timeoutId);
     }
-  }, [manualPositioningMode, userHasDraggedNodes, applyStoredPositions]);
+  }, [manualPositioningMode, userHasDraggedNodes, applyStoredPositions, restoreZoomPanState]);
 
   // Add a listener for active dragging state from TimeSlider
   useEffect(() => {
@@ -2051,6 +2094,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
           cy.off('mouseout', 'node');
           cy.off('mouseover', 'edge');
           cy.off('mouseout', 'edge');
+          cy.off('zoom');
+          cy.off('pan');
 
           // Stop any running layouts
           cy.stop();
@@ -2151,8 +2196,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ startTime, endT
 
     setSelectedLayout(newLayout);
 
-    // Clear old positions for fresh layout start
+    // Clear old positions and zoom/pan state for fresh layout start
     nodePositionsRef.current = {};
+    zoomPanStateRef.current = null;
 
     // Get the new layout configuration
     const newLayoutConfig = getLayoutConfig(newLayout);
