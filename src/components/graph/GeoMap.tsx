@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
 import { Icon, DivIcon, LatLngBounds } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import '@/styles/leaflet-icons.css';
@@ -120,18 +120,18 @@ const MapController: React.FC<{ nodes: GraphNode[]; isActive?: boolean }> = ({ n
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [map, isActive, hasInitialized, centerMapOnNodes]);
 
-  // Handle tab activation - only when first becoming active
+  // Handle tab activation - refresh every time tab becomes active
   useEffect(() => {
-    if (isActive && !hasInitialized) {
+    if (isActive) {
       console.log('MapController: Tab became active, forcing map update');
-      // When the Geographic View tab becomes active for the first time, force a complete refresh
+      // When the Geographic View tab becomes active, always force a complete refresh
       setTimeout(() => {
         map.invalidateSize();
         centerMapOnNodes();
         setHasInitialized(true);
       }, 100);
     }
-  }, [isActive, map, hasInitialized, centerMapOnNodes]);
+  }, [isActive, map, centerMapOnNodes]);
 
   return null;
 };
@@ -303,6 +303,88 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
   const mapRef = useRef<L.Map | null>(null);
   const [mapKey, setMapKey] = useState(0);
 
+  // Tooltip state
+  const [tooltip, setTooltip] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    content: string;
+    title: string;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    content: '',
+    title: ''
+  });
+
+  // Enhanced helper function for intelligent tooltip positioning (consistent with GraphVisualization)
+  const calculateTooltipPosition = useCallback((clientX: number, clientY: number) => {
+    const offset = 15; // Distance from the cursor
+    const tooltipWidth = 300; // Approximate tooltip width (matches maxWidth in tooltip component)
+    const tooltipHeight = 80; // More accurate tooltip height accounting for title + content
+    const margin = 10; // Margin from viewport edges
+    const proximityThreshold = 15; // Keep tooltip within this distance of cursor
+
+    // Get viewport dimensions
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Determine optimal horizontal positioning
+    let x, y;
+    let positionedLeft = false;
+
+    // Check if there's enough space on the right side
+    const spaceOnRight = viewportWidth - clientX - offset;
+    const spaceOnLeft = clientX - offset;
+
+    if (spaceOnRight >= tooltipWidth + margin) {
+      // Position on the right (default)
+      x = clientX + offset;
+    } else if (spaceOnLeft >= tooltipWidth + margin) {
+      // Position on the left
+      x = clientX - tooltipWidth - offset;
+      positionedLeft = true;
+    } else {
+      // Not enough space on either side - use the side with more space
+      if (spaceOnRight > spaceOnLeft) {
+        // Right side has more space, but clamp to viewport
+        x = Math.max(margin, viewportWidth - tooltipWidth - margin);
+      } else {
+        // Left side has more space
+        x = margin;
+        positionedLeft = true;
+      }
+    }
+
+    // Vertical positioning - center on cursor with boundary checks
+    y = clientY - tooltipHeight / 2;
+
+    // Enhanced vertical boundary detection
+    if (y < margin) {
+      y = margin; // Too close to top
+    } else if (y + tooltipHeight + margin > viewportHeight) {
+      y = viewportHeight - tooltipHeight - margin; // Too close to bottom
+    }
+
+    // Final proximity check - ensure tooltip stays close to cursor
+    const distanceFromCursor = Math.abs(x - clientX);
+    if (distanceFromCursor > tooltipWidth + proximityThreshold) {
+      // If tooltip is too far, bring it closer while respecting boundaries
+      if (positionedLeft) {
+        x = Math.max(margin, clientX - tooltipWidth - proximityThreshold);
+      } else {
+        x = Math.min(viewportWidth - tooltipWidth - margin, clientX + proximityThreshold);
+      }
+    }
+
+    // Absolute final safety clamp to ensure tooltip is always visible
+    x = Math.max(margin, Math.min(x, viewportWidth - tooltipWidth - margin));
+    y = Math.max(margin, Math.min(y, viewportHeight - tooltipHeight - margin));
+
+    return { x, y };
+  }, []);
+
   // Helper function to parse timestamp
   const parseTimestamp = (timestamp: number | string | undefined): number => {
     if (!timestamp) return 0;
@@ -433,6 +515,20 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
     onClose();
   };
 
+  // Auto-refresh when tab becomes active
+  useEffect(() => {
+    if (isActive) {
+      console.log('GeoMap: Tab became active, triggering data refresh');
+      // Force a data refresh when the tab becomes active
+      const timer = setTimeout(() => {
+        // Trigger the data fetch by incrementing mapKey
+        setMapKey(prev => prev + 1);
+      }, 50);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isActive]);
+
   // Fetch data from API
   useEffect(() => {
     const fetchData = async () => {
@@ -560,15 +656,23 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
             opacity: 0.7,
             dashArray: rel.type === 'default' ? '5, 5' : undefined
           }}
-        >
-          <Popup>
-            <div>
-              <strong>{rel.label || rel.type}</strong>
-              <div>From: {sourceNode.label || sourceNode.id}</div>
-              <div>To: {targetNode.label || targetNode.id}</div>
-            </div>
-          </Popup>
-        </Polyline>
+          eventHandlers={{
+            mouseover: (e) => {
+              const event = e.originalEvent as MouseEvent;
+              const { x, y } = calculateTooltipPosition(event.clientX, event.clientY);
+              setTooltip({
+                visible: true,
+                x,
+                y,
+                title: rel.label || rel.type,
+                content: `From: ${sourceNode.label || sourceNode.id} | To: ${targetNode.label || targetNode.id}`
+              });
+            },
+            mouseout: () => {
+              setTooltip(prev => ({ ...prev, visible: false }));
+            }
+          }}
+        />
       );
     });
   };
@@ -711,7 +815,7 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
               key={node.id}
               position={[node.latitude, node.longitude]}
               icon={icon}
-              // Add event handlers for icon loading errors
+              // Add event handlers for icon loading errors and hover tooltips
               eventHandlers={{
                 add: (e) => {
                   // Handle icon loading errors by replacing with fallback
@@ -723,26 +827,58 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
                       marker.setIcon(createFallbackIcon(node.type));
                     };
                   }
+                },
+                mouseover: (e) => {
+                  const event = e.originalEvent as MouseEvent;
+                  const { x, y } = calculateTooltipPosition(event.clientX, event.clientY);
+                  const content = [
+                    node.type && `Type: ${node.type}`,
+                    `Lat: ${node.latitude.toFixed(4)}, Lon: ${node.longitude.toFixed(4)}`,
+                    node.timestamp && `Time: ${new Date(parseTimestamp(node.timestamp)).toLocaleString()}`,
+                    `Icon: ${node.icon.split('/').pop()}`
+                  ].filter(Boolean).join(' | ');
+
+                  setTooltip({
+                    visible: true,
+                    x,
+                    y,
+                    title: node.label || node.id,
+                    content: content
+                  });
+                },
+                mouseout: () => {
+                  setTooltip(prev => ({ ...prev, visible: false }));
                 }
               }}
-            >
-              <Popup>
-                <div>
-                  <strong>{node.label || node.id}</strong>
-                  {node.type && <p>Type: {node.type}</p>}
-                  <p>Lat: {node.latitude.toFixed(4)}, Lon: {node.longitude.toFixed(4)}</p>
-                  {node.timestamp && (
-                    <p>Time: {new Date(parseTimestamp(node.timestamp)).toLocaleString()}</p>
-                  )}
-                  <p style={{ fontSize: '0.8em', color: '#666' }}>
-                    Icon: {node.icon.split('/').pop()}
-                  </p>
-                </div>
-              </Popup>
-            </Marker>
+            />
           );
         })}
       </MapContainer>
+
+      {/* Enhanced Custom Tooltip with Improved Positioning (consistent with GraphVisualization) */}
+      {tooltip.visible && (
+        <Box
+          position="fixed"
+          left={`${tooltip.x}px`}
+          top={`${tooltip.y}px`}
+          bg="rgba(0, 0, 0, 0.9)"
+          color="white"
+          p={3}
+          borderRadius="md"
+          fontSize="sm"
+          zIndex={9999}
+          maxWidth="300px"
+          minWidth="200px"
+          boxShadow="lg"
+          pointerEvents="none"
+          border="1px solid rgba(255, 255, 255, 0.1)"
+          backdropFilter="blur(4px)"
+          transition="all 0.1s ease-out"
+        >
+          <Text fontWeight="bold" mb={1} lineHeight="1.2">{tooltip.title}</Text>
+          <Text fontSize="xs" lineHeight="1.3" opacity={0.9}>{tooltip.content}</Text>
+        </Box>
+      )}
 
       {/* Region Selection Modal */}
       <Modal isOpen={isOpen} onClose={onClose} isCentered>

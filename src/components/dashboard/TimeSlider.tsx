@@ -105,16 +105,11 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
     };
   }, [minTimestamp, maxTimestamp]);
 
-  // Initialize time range state with a meaningful default
+  // Initialize time range state with full range for complete overview
   const [timeRange, setTimeRange] = useState<[number, number]>(() => {
     if (isValid) {
-      // Use 25% of the total range, centered
-      const totalRange = validMax - validMin;
-      const rangeSize = Math.max(totalRange * 0.25, 60000); // At least 1 minute
-      const center = validMin + totalRange * 0.5;
-      const start = Math.max(validMin, center - rangeSize / 2);
-      const end = Math.min(validMax, start + rangeSize);
-      return [start, end];
+      // Use the full time range by default to show all data immediately
+      return [validMin, validMax];
     }
     return [validMin, validMax];
   });

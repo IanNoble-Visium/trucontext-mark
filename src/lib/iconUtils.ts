@@ -1,9 +1,9 @@
 /**
- * List of known icon types that have corresponding PNG/SVG files
+ * List of known icon types that have corresponding PNG files
  * This includes both basic node types and specialized ITOT icons
  */
 export const KNOWN_ICONS = [
-  // Basic node types
+  // Basic node types (verified to exist as PNG files)
   'server',
   'workstation',
   'user',
@@ -15,9 +15,8 @@ export const KNOWN_ICONS = [
   'firewall',
   'switch',
   'client',
-  'character',
 
-  // ITOT (Industrial IoT) specialized icons
+  // ITOT (Industrial IoT) specialized icons (verified to exist as PNG files)
   'itot-activedirectory',
   'itot-businessintelligence',
   'itot-cve',
@@ -161,6 +160,7 @@ function getTypeVariations(type: string): string[] {
     'attacker': ['threatactor'],
     'malware': ['threatactor'],
     'actor': ['threatactor'],
+    'character': ['user'], // Map character to user since we don't have character.png
 
     // Industrial/IoT variations
     'sensor': ['itot-sensor', 'itot-temperaturesensor'],
