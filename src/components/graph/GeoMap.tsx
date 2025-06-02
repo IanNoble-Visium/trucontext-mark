@@ -534,8 +534,9 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        console.log('Fetching geo data from /api/geo-data');
-        const response = await fetch('/api/geo-data');
+        // Use the same Neo4j dataset as the Graph Topology view
+        console.log('GeoMap: fetching data from /api/graph-data');
+        const response = await fetch('/api/graph-data?all=true');
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -544,81 +545,73 @@ const GeoMap: React.FC<GeoMapProps> = ({ isActive = false }) => {
         }
 
         const data = await response.json();
-        console.log('Received geo data:', data);
+        console.log('GeoMap: received graph data:', data);
 
-        // Process the nodes to ensure they have coordinates
-        const rawNodes = data.nodes || [];
+        const elements = Array.isArray(data.elements) ? data.elements : [];
+        const nodesWithCoords: GraphNode[] = [];
+        const nodeMap = new Map<string, GraphNode>();
 
-        if (rawNodes.length === 0) {
-          console.log('No nodes with geographic data found');
+        elements.forEach((el: any) => {
+          if (el.group === 'nodes') {
+            const lat = parseFloat(el.data?.latitude ?? el.data?.lat);
+            const lon = parseFloat(el.data?.longitude ?? el.data?.lon);
+            const nodeType = el.data?.type || 'unknown';
+            const icon = getIconPath(nodeType);
+            const timestamp = el.data?.timestamp;
+
+            if (!isNaN(lat) && !isNaN(lon)) {
+              const node: GraphNode = {
+                id: String(el.data?.id),
+                label: el.data?.label || `Node ${el.data?.id}`,
+                type: nodeType,
+                latitude: lat,
+                longitude: lon,
+                icon,
+                timestamp,
+              };
+              nodesWithCoords.push(node);
+              nodeMap.set(node.id, node);
+            }
+          }
+        });
+
+        if (nodesWithCoords.length === 0) {
+          console.log('GeoMap: no nodes with geographic data found');
           setAllNodes([]);
           setFilteredNodes([]);
           setIsLoading(false);
-          // Open the dialog to generate sample nodes
           onOpen();
           return;
         }
 
-        const nodesWithCoords: GraphNode[] = [];
-
-        rawNodes.forEach((n: any) => {
-          // Try to extract latitude and longitude from various property names
-          const lat = parseFloat(n.data?.latitude ?? n.data?.lat);
-          const lon = parseFloat(n.data?.longitude ?? n.data?.lon);
-          // Get icon based on node type with enhanced mapping
-          const nodeType = n.data?.type || 'unknown';
-          const icon = getIconPath(nodeType); // PNG format for Leaflet compatibility
-          // Extract timestamp if available
-          const timestamp = n.data?.timestamp;
-
-          // If coordinates are missing or invalid, add to nodesWithoutCoords
-          if (isNaN(lat) || isNaN(lon)) {
-            console.log(`Node ${n.data?.id} missing coordinates, will prompt for region selection`);
-          } else {
-            // Add nodes with valid coordinates directly
-            nodesWithCoords.push({
-              id: String(n.data?.id),
-              label: n.data?.label || `Node ${n.data?.id}`,
-              type: nodeType,
-              latitude: lat,
-              longitude: lon,
-              icon,
-              timestamp
-            });
+        const relationships: GraphRelationship[] = [];
+        elements.forEach((el: any) => {
+          if (el.group === 'edges') {
+            const source = String(el.data?.source);
+            const target = String(el.data?.target);
+            if (nodeMap.has(source) && nodeMap.has(target)) {
+              relationships.push({
+                id: String(el.data?.id),
+                source,
+                target,
+                type: el.data?.type || 'default',
+                label: el.data?.label,
+                timestamp: el.data?.timestamp,
+              });
+            }
           }
         });
 
-        console.log(`Found ${nodesWithCoords.length} nodes with geographic data`);
+        console.log(`GeoMap: found ${nodesWithCoords.length} nodes and ${relationships.length} relationships with coordinates`);
 
-        // Store in both all and filtered state initially
         setAllNodes(nodesWithCoords);
         setFilteredNodes(nodesWithCoords);
-
-        // Process relationships if they exist in the data
-        if (data.edges && Array.isArray(data.edges)) {
-          const relationships: GraphRelationship[] = data.edges.map((edge: any) => ({
-            id: String(edge.data?.id || `edge-${Math.random().toString(36).substring(2, 11)}`),
-            source: String(edge.data?.source),
-            target: String(edge.data?.target),
-            type: edge.data?.type || 'default',
-            label: edge.data?.label,
-            timestamp: edge.data?.timestamp
-          }));
-
-          console.log(`Found ${relationships.length} relationships`);
-          // Store in both all and filtered state initially
-          setAllRelationships(relationships);
-          setFilteredRelationships(relationships);
-        } else {
-          console.log('No relationship data found');
-          setAllRelationships([]);
-          setFilteredRelationships([]);
-        }
-
+        setAllRelationships(relationships);
+        setFilteredRelationships(relationships);
         setIsLoading(false);
       } catch (e: any) {
-        console.error("Failed to fetch geo data:", e);
-        setError(e.message || "An unknown error occurred");
+        console.error('GeoMap: failed to fetch graph data:', e);
+        setError(e.message || 'An unknown error occurred');
         setIsLoading(false);
       }
     };
