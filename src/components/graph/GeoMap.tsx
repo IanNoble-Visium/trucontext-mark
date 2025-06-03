@@ -57,20 +57,32 @@ const MapController: React.FC<{ nodes: GraphNode[]; isActive?: boolean }> = ({ n
   // Function to center map on nodes
   const centerMapOnNodes = useCallback(() => {
     console.log('MapController: Attempting to center map on nodes', nodes.length);
-    if (nodes.length > 0) {
-      const bounds = new LatLngBounds([]);
-      nodes.forEach(node => {
-        bounds.extend([node.latitude, node.longitude]);
-      });
 
-      if (bounds.isValid()) {
-        console.log('MapController: Fitting bounds with padding');
-        map.fitBounds(bounds, { padding: [20, 20] });
-      } else {
-        console.log('MapController: Bounds are not valid');
-      }
-    } else {
+    if (nodes.length === 0) {
       console.log('MapController: No nodes to center on');
+      return;
+    }
+
+    // Avoid fitting bounds when the map container has not been sized yet
+    const mapSize = map.getSize();
+    if (mapSize.x === 0 || mapSize.y === 0) {
+      console.log('MapController: Map size invalid, delaying centering');
+      setTimeout(centerMapOnNodes, 100);
+      return;
+    }
+
+    const bounds = new LatLngBounds([]);
+    nodes.forEach(node => {
+      if (isFinite(node.latitude) && isFinite(node.longitude)) {
+        bounds.extend([node.latitude, node.longitude]);
+      }
+    });
+
+    if (bounds.isValid()) {
+      console.log('MapController: Fitting bounds with padding');
+      map.fitBounds(bounds, { padding: [20, 20] });
+    } else {
+      console.log('MapController: Bounds are not valid');
     }
   }, [map, nodes]);
 
